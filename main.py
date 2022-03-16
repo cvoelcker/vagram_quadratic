@@ -16,12 +16,12 @@ import optax
 import environment
 
 
-class ValueFunction():
+class ValueFunction:
     pass
 
 
 class EnvironmentModel(nn.Module):
-    """"Generative model of N-dim input to N-dim output."""
+    """ "Generative model of N-dim input to N-dim output."""
 
     output_size: int
 
@@ -42,13 +42,13 @@ def hessian(fun):
 
 def model_prediction(theta, model, inp):
     """Compute the model prediction for a given input."""
-    return model.apply({'params': theta}, inp)
+    return model.apply({"params": theta}, inp)
 
 
 def mse_loss(model_prediction, environment_sample):
     """Compute the MSE loss for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = model_prediction - environment_sample
-    return np.mean(np.square(err)) 
+    return np.mean(np.square(err))
 
 
 def vagram_loss(model_prediction, environment_sample, value_function):
@@ -90,20 +90,23 @@ def eval_loss_mse(model_prediction, environment_sample, value_function):
 
 def train_step(batch_x, batch_y, loss_function, model, optim_state, value_function):
     """Train step for a given batch of data. Wraps the gradient update step"""
+
     @jax.jit
     def loss(t):
         pred_y = model_prediction(t, model, batch_x)
         return loss_function(pred_y, batch_y, value_function)
+
     loss_value, grad = jax.value_and_grad(loss)(optim_state.params)
     optim_state = optim_state.apply_gradients(grads=grad)
     return loss_value, optim_state
 
 
 def train(
-    train_ds: Tuple[np.ndarray, np.ndarray], 
-    val_ds: Tuple[np.ndarray, np.ndarray], 
-    loss_function: Callable, 
-    value_function: Callable):
+    train_ds: Tuple[np.ndarray, np.ndarray],
+    val_ds: Tuple[np.ndarray, np.ndarray],
+    loss_function: Callable,
+    value_function: Callable,
+):
     """
     Core training loop, expects a train and a validation dataset, as well as a loss function and a value function to compute VMAL and VaGram losses
     """
@@ -115,7 +118,7 @@ def train(
 
     val_x = val_ds[0]
     val_y = val_ds[1]
-  
+
     # hyperparameters
     inp_dim = data_x.shape[-1]
     lr = 3e-4
@@ -127,52 +130,70 @@ def train(
     key, model_key = random.split(key)
     model = EnvironmentModel(output_size=data_y.shape[-1])
     key1, key2 = random.split(model_key)
-    x = random.normal(key1, (inp_dim,)) # Dummy input
-    params = model.init(key2, x)["params"] # Initialization call
+    x = random.normal(key1, (inp_dim,))  # Dummy input
+    params = model.init(key2, x)["params"]  # Initialization call
     tx = optax.rmsprop(lr)
-    optim_state = train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
+    optim_state = train_state.TrainState.create(
+        apply_fn=model.apply, params=params, tx=tx
+    )
 
     # bookeeping for plotting
     all_loss_values = np.array([])
-    all_loss_val = np.array([])
-    all_vaml_val = np.array([])
-    all_mse_val = np.array([])
-  
+    all_loss_val = []
+    all_vaml_val = []
+    all_mse_val = []
+
     # train loop
     def train_epoch(optim_state, model, batch_size, epoch, rng):
         """Train for a single epoch."""
         rng, z_rng = random.split(rng)
         train_ds_size = len(data_x)
         steps_per_epoch = train_ds_size // batch_size
-  
+
         perms = jax.random.permutation(rng, train_ds_size)
-        perms = perms[:steps_per_epoch * batch_size]  # skip incomplete batch
+        perms = perms[: steps_per_epoch * batch_size]
         perms = perms.reshape((steps_per_epoch, batch_size))
         batch_metrics = []
         loss_values = []
-        for perm in tqdm(perms):
 
+        for perm in tqdm(perms):
             # get batch from permutations
             batch_x = data_x[perm]
             batch_y = data_y[perm]
-  
+
             @jax.jit
             def f(batch_x, batch_y, state):
-                return train_step(batch_x, batch_y, loss_function, model, state, value_function)
+                return train_step(
+                    batch_x, batch_y, loss_function, model, state, value_function
+                )
+
             loss_value, optim_state = f(batch_x, batch_y, optim_state)
             loss_values.append(loss_value)
 
         # validate on two reference losses: VAML and MSE
-        val_model_prediction = model_prediction(val_x, model, val_x)
-        val_loss = jax.vmap(loss_function, in_axes=(0,0,None))(val_model_prediction, val_y, value_function)
-        vaml_val_loss = jax.vmap(vaml_val_loss, in_axes=(0,0,None))(val_model_prediction, val_y, value_function)
-        mse_val_loss = jax.vmap(mse_val_loss, in_axes=(0,0,None))(val_model_prediction, val_y, value_function)
+        val_model_prediction = model_prediction(optim_state.params, model, val_x)
 
-        return np.array(loss_values), val_loss, vaml_val_loss, mse_val_loss, optim_state
+        val_loss = loss_function(val_model_prediction, val_y, value_function)
+        vaml_val_loss = jax.vmap(eval_loss_vaml, in_axes=(0, 0, None))(
+            val_model_prediction, val_y, value_function
+        ).sum()
+        mse_val_loss = jax.vmap(eval_loss_mse, in_axes=(0, 0, None))(
+            val_model_prediction, val_y, value_function
+        ).sum()
+
+        return (
+            np.array(loss_values),
+            np.array([val_loss]),
+            np.array([vaml_val_loss]),
+            np.array([mse_val_loss]),
+            optim_state,
+        )
 
     for i in tqdm(range(epoch_num)):
         key, epoch_key = random.split(key)
-        loss_values, loss_val, vaml_val, mse_val, optim_state = train_epoch(optim_state, model, batch_size, i, epoch_key)
+        loss_values, loss_val, vaml_val, mse_val, optim_state = train_epoch(
+            optim_state, model, batch_size, i, epoch_key
+        )
 
         # saving the training loss
         all_loss_values = np.concatenate((all_loss_values, loss_values))
@@ -196,7 +217,7 @@ def train(
 
 if __name__ == "__main__":
     env = environment.make_pendulum()
-    obs, act = environment.get_samples(env)
+    obs, act = environment.get_samples(env, n=20000)
 
     train_ratio = 0.9
 
@@ -205,13 +226,15 @@ if __name__ == "__main__":
     y = obs[:, 1:]
     y = y.reshape(-1, y.shape[-1])
 
-    train_ds = (x[:int(len(x) * train_ratio)], y[:int(len(y) * train_ratio)])
-    val_ds = (x[int(len(x) * train_ratio):], y[int(len(y) * train_ratio):])
+    train_ds = (x[: int(len(x) * train_ratio)], y[: int(len(y) * train_ratio)])
+    val_ds = (x[int(len(x) * train_ratio) :], y[int(len(y) * train_ratio) :])
 
-    s = np.array([[1., 2., 3.], [2., 4., 9.]])
-    s_target = np.array([[2., 0., 0.5], [0., 0., 0.]])
-    
+    s = np.array([[1.0, 2.0, 3.0], [2.0, 4.0, 9.0]])
+    s_target = np.array([[2.0, 0.0, 0.5], [0.0, 0.0, 0.0]])
+
     value_function = lambda x: np.sum(np.sin(x))
-    loss_function = lambda x, y, z: np.mean(jax.vamp(quadratic_vagram_loss, in_axes=(0, 0, None))(x, y, z))
+    loss_function = lambda x, y, z: np.mean(
+        jax.vmap(quadratic_vagram_loss, in_axes=(0, 0, None))(x, y, z)
+    )
 
     all_loss_values = train(train_ds, val_ds, loss_function, value_function)
