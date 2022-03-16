@@ -45,14 +45,12 @@ def model_prediction(theta, model, inp):
     return model.apply({'params': theta}, inp)
 
 
-@jax.vmap(in_axes=(0,0,None))
 def mse_loss(model_prediction, environment_sample):
     """Compute the MSE loss for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = model_prediction - environment_sample
     return np.mean(np.square(err)) 
 
 
-@jax.vmap(in_axes=(0,0,None))
 def vagram_loss(model_prediction, environment_sample, value_function):
     """Compute the VAGRAM loss for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = model_prediction - environment_sample
@@ -60,7 +58,6 @@ def vagram_loss(model_prediction, environment_sample, value_function):
     return np.square(grad * err).sum()
 
 
-@jax.vmap(in_axes=(0,0,None))
 def quadratic_vagram_loss(model_prediction, environment_sample, value_function):
     """Compute the quadratic upper bounded 2nd order VAGRAM loss using the Hessian for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = model_prediction - environment_sample
@@ -70,7 +67,6 @@ def quadratic_vagram_loss(model_prediction, environment_sample, value_function):
     return np.square(l * basis_trans).sum()
 
 
-@jax.vmap(in_axes=(0,0,None))
 def quadratic_vagram_loss_quartic(model_prediction, environment_sample, value_function):
     """Compute the original quartic 2nd order VAGRAM loss using the Hessian for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = model_prediction - environment_sample
@@ -80,14 +76,12 @@ def quadratic_vagram_loss_quartic(model_prediction, environment_sample, value_fu
     return np.square(l * np.square(basis_trans)).sum()
 
 
-@jax.vmap(in_axes=(0,0,None))
 def eval_loss_vaml(model_prediction, environment_sample, value_function):
     """Compute the VAML loss for validation for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = value_function(environment_sample) - value_function(model_prediction)
     return np.square(err).sum()
 
 
-@jax.vmap(in_axes=(0,0,None))
 def eval_loss_mse(model_prediction, environment_sample, value_function):
     """Compute the MSE loss for validation for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = model_prediction - environment_sample
@@ -170,9 +164,9 @@ def train(
 
         # validate on two reference losses: VAML and MSE
         val_model_prediction = model_prediction(val_x, model, val_x)
-        val_loss = loss_function(val_model_prediction, val_y, value_function)
-        vaml_val_loss = vaml_val_loss(val_model_prediction, val_y, value_function)
-        mse_val_loss = mse_val_loss(val_model_prediction, val_y, value_function)
+        val_loss = jax.vmap(loss_function, in_axes=(0,0,None))(val_model_prediction, val_y, value_function)
+        vaml_val_loss = jax.vmap(vaml_val_loss, in_axes=(0,0,None))(val_model_prediction, val_y, value_function)
+        mse_val_loss = jax.vmap(mse_val_loss, in_axes=(0,0,None))(val_model_prediction, val_y, value_function)
 
         return np.array(loss_values), val_loss, vaml_val_loss, mse_val_loss, optim_state
 
@@ -218,6 +212,6 @@ if __name__ == "__main__":
     s_target = np.array([[2., 0., 0.5], [0., 0., 0.]])
     
     value_function = lambda x: np.sum(np.sin(x))
-    loss_function = lambda x, y, z: np.mean(quadratic_vagram_loss(x, y, z))
+    loss_function = lambda x, y, z: np.mean(jax.vamp(quadratic_vagram_loss, in_axes=(0, 0, None))(x, y, z))
 
     all_loss_values = train(train_ds, val_ds, loss_function, value_function)
