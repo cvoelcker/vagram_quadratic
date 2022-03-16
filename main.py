@@ -45,7 +45,7 @@ def model_prediction(theta, model, inp):
     return model.apply({"params": theta}, inp)
 
 
-def mse_loss(model_prediction, environment_sample):
+def mse_loss(model_prediction, environment_sample, unused):
     """Compute the MSE loss for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = model_prediction - environment_sample
     return np.mean(np.square(err))
@@ -153,7 +153,6 @@ def train(
         perms = jax.random.permutation(rng, train_ds_size)
         perms = perms[: steps_per_epoch * batch_size]
         perms = perms.reshape((steps_per_epoch, batch_size))
-        batch_metrics = []
         loss_values = []
 
         for perm in tqdm(perms):
@@ -203,19 +202,11 @@ def train(
         all_vaml_val.append(vaml_val)
         all_mse_val.append(mse_val)
 
-    plt.plot(all_loss_values)
-    plt.show()
-
-    plt.plot(all_vaml_val)
-    plt.show()
-
-    plt.plot(all_mse_val)
-    plt.show()
-
-    return all_loss_values
+    return all_loss_values, all_loss_val, all_vaml_val, all_mse_val
 
 
-if __name__ == "__main__":
+def run_combined_vagram(run_name):
+    run_name = run_name + "_vagram_quadratic_combined"
     env = environment.make_pendulum()
     obs, act = environment.get_samples(env, n=20000)
 
@@ -235,6 +226,95 @@ if __name__ == "__main__":
     value_function = lambda x: np.sum(np.sin(x))
     loss_function = lambda x, y, z: np.mean(
         jax.vmap(quadratic_vagram_loss, in_axes=(0, 0, None))(x, y, z)
+        + jax.vmap(vagram_loss, in_axes=(0, 0, None))(x, y, z)
     )
 
-    all_loss_values = train(train_ds, val_ds, loss_function, value_function)
+    all_loss_values, all_loss_val, all_vaml_val, all_mse_val = train(
+        train_ds, val_ds, loss_function, value_function
+    )
+
+    plt.plot(all_loss_values)
+    plt.title("Train loss")
+    plt.savefig(f"{run_name}_train_loss.png")
+
+    plt.plot(all_loss_val)
+    plt.title("Val loss")
+    plt.savefig(f"{run_name}_val_loss.png")
+
+    plt.plot(all_vaml_val)
+    plt.title("Val VAML loss")
+    plt.savefig(f"{run_name}_vaml_loss.png")
+
+    plt.plot(all_mse_val)
+    plt.title("Val MSE loss")
+    plt.savefig(f"{run_name}_mse_loss.png")
+
+    return all_loss_values, all_loss_val, all_vaml_val, all_mse_val
+
+
+def run_mse(run_name):
+    run_name = run_name + "_mse"
+    env = environment.make_pendulum()
+    obs, act = environment.get_samples(env, n=20000)
+
+    train_ratio = 0.9
+
+    x = np.concatenate([obs, act], axis=-1)[:, :-1]
+    x = x.reshape(-1, x.shape[-1])
+    y = obs[:, 1:]
+    y = y.reshape(-1, y.shape[-1])
+
+    train_ds = (x[: int(len(x) * train_ratio)], y[: int(len(y) * train_ratio)])
+    val_ds = (x[int(len(x) * train_ratio) :], y[int(len(y) * train_ratio) :])
+
+    s = np.array([[1.0, 2.0, 3.0], [2.0, 4.0, 9.0]])
+    s_target = np.array([[2.0, 0.0, 0.5], [0.0, 0.0, 0.0]])
+
+    value_function = lambda x: np.sum(np.sin(x))
+    loss_function = lambda x, y, z: np.mean(
+        jax.vmap(mse_loss, in_axes=(0, 0, None))(x, y, z)
+    )
+
+    all_loss_values, all_loss_val, all_vaml_val, all_mse_val = train(
+        train_ds, val_ds, loss_function, value_function
+    )
+
+    plt.plot(all_loss_values)
+    plt.title("Train loss")
+    plt.savefig(f"{run_name}_train_loss.png")
+
+    plt.plot(all_loss_val)
+    plt.title("Val loss")
+    plt.savefig(f"{run_name}_val_loss.png")
+
+    plt.plot(all_vaml_val)
+    plt.title("Val VAML loss")
+    plt.savefig(f"{run_name}_vaml_loss.png")
+
+    plt.plot(all_mse_val)
+    plt.title("Val MSE loss")
+    plt.savefig(f"{run_name}_mse_loss.png")
+
+    return all_loss_values, all_loss_val, all_vaml_val, all_mse_val
+
+
+if __name__ == "__main__":
+    import sys
+
+    try:
+        run_name = sys.argv[1]
+    except IndexError as e:
+        run_name = "default"
+
+    loss_vagram, val_vagram, vaml_vagram, mse_vagram = run_combined_vagram(run_name)
+    loss_mse, val_mse, vaml_mse, mse_mse = run_mse(run_name)
+
+    plt.plot(vaml_vagram)
+    plt.plot(vaml_mse)
+    plt.title("Val loss")
+    plt.savefig(f"{run_name}_vaml_comp.png")
+
+    plt.plot(mse_vagram)
+    plt.plot(mse_mse)
+    plt.title("Val MSE loss")
+    plt.savefig(f"{run_name}_mse_comp.png")
