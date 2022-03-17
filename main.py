@@ -27,9 +27,9 @@ class EnvironmentModel(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        x = nn.Dense(features=16)(x)
-        x = nn.relu(x)
-        x = nn.Dense(features=16)(x)
+        # x = nn.Dense(features=16)(x)
+        # x = nn.relu(x)
+        x = nn.Dense(features=4)(x)
         x = nn.relu(x)
         x = nn.Dense(features=self.output_size)(x)
         return x
@@ -91,7 +91,6 @@ def eval_loss_mse(model_prediction, environment_sample, value_function):
 def train_step(batch_x, batch_y, loss_function, model, optim_state, value_function):
     """Train step for a given batch of data. Wraps the gradient update step"""
 
-    @jax.jit
     def loss(t):
         pred_y = model_prediction(t, model, batch_x)
         return loss_function(pred_y, batch_y, value_function)
@@ -122,7 +121,7 @@ def train(
     # hyperparameters
     inp_dim = data_x.shape[-1]
     lr = 3e-4
-    epoch_num = 10
+    epoch_num = 50
     n_samples = 100000
     batch_size = 32
 
@@ -175,10 +174,10 @@ def train(
         val_loss = loss_function(val_model_prediction, val_y, value_function)
         vaml_val_loss = jax.vmap(eval_loss_vaml, in_axes=(0, 0, None))(
             val_model_prediction, val_y, value_function
-        ).sum()
+        ).mean()
         mse_val_loss = jax.vmap(eval_loss_mse, in_axes=(0, 0, None))(
             val_model_prediction, val_y, value_function
-        ).sum()
+        ).mean()
 
         return (
             np.array(loss_values),
@@ -208,7 +207,7 @@ def train(
 def run_combined_vagram(run_name):
     run_name = run_name + "_vagram_quadratic_combined"
     env = environment.make_pendulum()
-    obs, act = environment.get_samples(env, n=20000)
+    obs, act = environment.get_samples(env, n=10000)
 
     train_ratio = 0.9
 
@@ -223,7 +222,7 @@ def run_combined_vagram(run_name):
     s = np.array([[1.0, 2.0, 3.0], [2.0, 4.0, 9.0]])
     s_target = np.array([[2.0, 0.0, 0.5], [0.0, 0.0, 0.0]])
 
-    value_function = lambda x: np.sum(np.sin(x))
+    value_function = jax.jit(lambda x: np.prod(np.sin(x)))
     loss_function = lambda x, y, z: np.mean(
         jax.vmap(quadratic_vagram_loss, in_axes=(0, 0, None))(x, y, z)
         + jax.vmap(vagram_loss, in_axes=(0, 0, None))(x, y, z)
@@ -236,18 +235,22 @@ def run_combined_vagram(run_name):
     plt.plot(all_loss_values)
     plt.title("Train loss")
     plt.savefig(f"{run_name}_train_loss.png")
+    plt.clf()
 
     plt.plot(all_loss_val)
     plt.title("Val loss")
     plt.savefig(f"{run_name}_val_loss.png")
+    plt.clf()
 
     plt.plot(all_vaml_val)
     plt.title("Val VAML loss")
     plt.savefig(f"{run_name}_vaml_loss.png")
+    plt.clf()
 
     plt.plot(all_mse_val)
     plt.title("Val MSE loss")
     plt.savefig(f"{run_name}_mse_loss.png")
+    plt.clf()
 
     return all_loss_values, all_loss_val, all_vaml_val, all_mse_val
 
@@ -255,7 +258,7 @@ def run_combined_vagram(run_name):
 def run_mse(run_name):
     run_name = run_name + "_mse"
     env = environment.make_pendulum()
-    obs, act = environment.get_samples(env, n=20000)
+    obs, act = environment.get_samples(env, n=10000)
 
     train_ratio = 0.9
 
@@ -270,7 +273,7 @@ def run_mse(run_name):
     s = np.array([[1.0, 2.0, 3.0], [2.0, 4.0, 9.0]])
     s_target = np.array([[2.0, 0.0, 0.5], [0.0, 0.0, 0.0]])
 
-    value_function = lambda x: np.sum(np.sin(x))
+    value_function = jax.jit(lambda x: np.prod(np.sin(x)))
     loss_function = lambda x, y, z: np.mean(
         jax.vmap(mse_loss, in_axes=(0, 0, None))(x, y, z)
     )
@@ -282,18 +285,22 @@ def run_mse(run_name):
     plt.plot(all_loss_values)
     plt.title("Train loss")
     plt.savefig(f"{run_name}_train_loss.png")
+    plt.clf()
 
     plt.plot(all_loss_val)
     plt.title("Val loss")
     plt.savefig(f"{run_name}_val_loss.png")
+    plt.clf()
 
     plt.plot(all_vaml_val)
     plt.title("Val VAML loss")
     plt.savefig(f"{run_name}_vaml_loss.png")
+    plt.clf()
 
     plt.plot(all_mse_val)
     plt.title("Val MSE loss")
     plt.savefig(f"{run_name}_mse_loss.png")
+    plt.clf()
 
     return all_loss_values, all_loss_val, all_vaml_val, all_mse_val
 
@@ -313,8 +320,10 @@ if __name__ == "__main__":
     plt.plot(vaml_mse)
     plt.title("Val loss")
     plt.savefig(f"{run_name}_vaml_comp.png")
+    plt.clf()
 
     plt.plot(mse_vagram)
     plt.plot(mse_mse)
     plt.title("Val MSE loss")
     plt.savefig(f"{run_name}_mse_comp.png")
+    plt.clf()
