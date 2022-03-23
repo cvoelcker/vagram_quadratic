@@ -58,6 +58,20 @@ def vagram_loss(model_prediction, environment_sample, value_function):
     return np.square(grad * err).sum()
 
 
+def vagram_broken_loss(model_prediction, environment_sample, value_function):
+    """Compute the VAGRAM loss for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
+    err = model_prediction - environment_sample
+    _, grad = jax.value_and_grad(value_function)(environment_sample)
+    return np.square(grad.dot(err)).sum()
+
+
+def quadratic_vagram_broken_loss(model_prediction, environment_sample, value_function):
+    """Compute the quadratic upper bounded 2nd order VAGRAM loss using the Hessian for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
+    err = model_prediction - environment_sample
+    hes = hessian(value_function)(environment_sample)
+    return np.square(err.T.dot(hes.dot(err)))
+
+
 def quadratic_vagram_loss(model_prediction, environment_sample, value_function):
     """Compute the quadratic upper bounded 2nd order VAGRAM loss using the Hessian for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = model_prediction - environment_sample
