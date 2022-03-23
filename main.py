@@ -29,7 +29,7 @@ class EnvironmentModel(nn.Module):
     def __call__(self, x):
         # x = nn.Dense(features=16)(x)
         # x = nn.relu(x)
-        x = nn.Dense(features=4)(x)
+        x = nn.Dense(features=2)(x)
         x = nn.relu(x)
         x = nn.Dense(features=self.output_size)(x)
         return x
@@ -121,9 +121,9 @@ def train(
     # hyperparameters
     inp_dim = data_x.shape[-1]
     lr = 3e-4
-    epoch_num = 50
+    epoch_num = 100
     n_samples = 100000
-    batch_size = 32
+    batch_size = 128
 
     # init networks
     key, model_key = random.split(key)
@@ -154,7 +154,7 @@ def train(
         perms = perms.reshape((steps_per_epoch, batch_size))
         loss_values = []
 
-        for perm in tqdm(perms):
+        for perm in perms:
             # get batch from permutations
             batch_x = data_x[perm]
             batch_y = data_y[perm]
@@ -204,6 +204,56 @@ def train(
     return all_loss_values, all_loss_val, all_vaml_val, all_mse_val
 
 
+def run_vagram(run_name):
+    run_name = run_name + "_vagram_quadratic_combined"
+    env = environment.make_pendulum()
+    obs, act = environment.get_samples(env, n=10000)
+
+    train_ratio = 0.9
+
+    x = np.concatenate([obs, act], axis=-1)[:, :-1]
+    x = x.reshape(-1, x.shape[-1])
+    y = obs[:, 1:]
+    y = y.reshape(-1, y.shape[-1])
+
+    train_ds = (x[: int(len(x) * train_ratio)], y[: int(len(y) * train_ratio)])
+    val_ds = (x[int(len(x) * train_ratio) :], y[int(len(y) * train_ratio) :])
+
+    s = np.array([[1.0, 2.0, 3.0], [2.0, 4.0, 9.0]])
+    s_target = np.array([[2.0, 0.0, 0.5], [0.0, 0.0, 0.0]])
+
+    value_function = jax.jit(lambda x: np.prod(np.sin(x)))
+    loss_function = lambda x, y, z: np.mean(
+        jax.vmap(vagram_loss, in_axes=(0, 0, None))(x, y, z)
+    )
+
+    all_loss_values, all_loss_val, all_vaml_val, all_mse_val = train(
+        train_ds, val_ds, loss_function, value_function
+    )
+
+    plt.plot(all_loss_values)
+    plt.title("Train loss")
+    plt.savefig(f"plt/{run_name}_og_train_loss.png")
+    plt.clf()
+
+    plt.plot(all_loss_val)
+    plt.title("Val loss")
+    plt.savefig(f"plt/{run_name}_og_val_loss.png")
+    plt.clf()
+
+    plt.plot(all_vaml_val)
+    plt.title("Val VAML loss")
+    plt.savefig(f"plt/{run_name}_og_vaml_loss.png")
+    plt.clf()
+
+    plt.plot(all_mse_val)
+    plt.title("Val MSE loss")
+    plt.savefig(f"plt/{run_name}_og_mse_loss.png")
+    plt.clf()
+
+    return all_loss_values, all_loss_val, all_vaml_val, all_mse_val
+
+
 def run_combined_vagram(run_name):
     run_name = run_name + "_vagram_quadratic_combined"
     env = environment.make_pendulum()
@@ -234,22 +284,22 @@ def run_combined_vagram(run_name):
 
     plt.plot(all_loss_values)
     plt.title("Train loss")
-    plt.savefig(f"{run_name}_train_loss.png")
+    plt.savefig(f"plt/{run_name}_train_loss.png")
     plt.clf()
 
     plt.plot(all_loss_val)
     plt.title("Val loss")
-    plt.savefig(f"{run_name}_val_loss.png")
+    plt.savefig(f"plt/{run_name}_val_loss.png")
     plt.clf()
 
     plt.plot(all_vaml_val)
     plt.title("Val VAML loss")
-    plt.savefig(f"{run_name}_vaml_loss.png")
+    plt.savefig(f"plt/{run_name}_vaml_loss.png")
     plt.clf()
 
     plt.plot(all_mse_val)
     plt.title("Val MSE loss")
-    plt.savefig(f"{run_name}_mse_loss.png")
+    plt.savefig(f"plt/{run_name}_mse_loss.png")
     plt.clf()
 
     return all_loss_values, all_loss_val, all_vaml_val, all_mse_val
@@ -284,22 +334,22 @@ def run_mse(run_name):
 
     plt.plot(all_loss_values)
     plt.title("Train loss")
-    plt.savefig(f"{run_name}_train_loss.png")
+    plt.savefig(f"plt/{run_name}_train_loss.png")
     plt.clf()
 
     plt.plot(all_loss_val)
     plt.title("Val loss")
-    plt.savefig(f"{run_name}_val_loss.png")
+    plt.savefig(f"plt/{run_name}_val_loss.png")
     plt.clf()
 
     plt.plot(all_vaml_val)
     plt.title("Val VAML loss")
-    plt.savefig(f"{run_name}_vaml_loss.png")
+    plt.savefig(f"plt/{run_name}_vaml_loss.png")
     plt.clf()
 
     plt.plot(all_mse_val)
     plt.title("Val MSE loss")
-    plt.savefig(f"{run_name}_mse_loss.png")
+    plt.savefig(f"plt/{run_name}_mse_loss.png")
     plt.clf()
 
     return all_loss_values, all_loss_val, all_vaml_val, all_mse_val
@@ -314,16 +364,34 @@ if __name__ == "__main__":
         run_name = "default"
 
     loss_vagram, val_vagram, vaml_vagram, mse_vagram = run_combined_vagram(run_name)
+    loss_og, val_og, vaml_og, mse_og = run_vagram(run_name)
     loss_mse, val_mse, vaml_mse, mse_mse = run_mse(run_name)
 
+    np.save("log/loss_vagram.npz", loss_vagram)
+    np.save("log/val_vagram.npz", val_vagram)
+    np.save("log/vaml_vagram.npz", vaml_vagram)
+    np.save("log/mse_vagram.npz", mse_vagram)
+
+    np.save("log/loss_mse.npz", loss_vagram)
+    np.save("log/val_mse.npz", val_vagram)
+    np.save("log/vaml_mse.npz", vaml_vagram)
+    np.save("log/mse_mse.npz", mse_vagram)
+
+    np.save("log/loss_og.npz", loss_og)
+    np.save("log/val_og.npz", val_og)
+    np.save("log/vaml_og.npz", vaml_og)
+    np.save("log/mse_og.npz", mse_og)
+
     plt.plot(vaml_vagram)
+    plt.plot(vaml_og)
     plt.plot(vaml_mse)
     plt.title("Val loss")
-    plt.savefig(f"{run_name}_vaml_comp.png")
+    plt.savefig(f"plt/{run_name}_vaml_comp.png")
     plt.clf()
 
     plt.plot(mse_vagram)
+    plt.plot(mse_og)
     plt.plot(mse_mse)
     plt.title("Val MSE loss")
-    plt.savefig(f"{run_name}_mse_comp.png")
+    plt.savefig(f"plt/{run_name}_mse_comp.png")
     plt.clf()
