@@ -142,8 +142,8 @@ def train(env):
       if abs(average_rewards[-1] - average_rewards[-2]) < eps:
         converged = True
 
-    plt.scatter(average_rewards)
-    plt.show()
+      plt.plot(average_rewards)
+      plt.show()
 
     return average_rewards, converged
 
