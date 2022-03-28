@@ -1,6 +1,6 @@
 import collections
 import random
-import numpy as np
+import jax.numpy as jnp
 
 Transition = collections.namedtuple("Transition", "obs reward done action next_obs")
 
@@ -22,8 +22,8 @@ class ReplayBuffer(object):
   def sample(self, batch_size):
     obs_tm1, a_tm1, r_t, obs_t, done_t = zip(
         *random.sample(self.buffer, batch_size))
-    return (np.stack(obs_tm1), np.asarray(a_tm1), np.asarray(r_t),
-           np.stack(obs_t), np.asarray(done_t))
+    return (jnp.stack(obs_tm1), jnp.asarray(a_tm1), jnp.asarray(r_t),
+           jnp.stack(obs_t), jnp.asarray(done_t))
 
   def is_ready(self, batch_size):
     return batch_size <= len(self.buffer)

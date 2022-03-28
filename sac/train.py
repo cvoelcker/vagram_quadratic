@@ -66,11 +66,10 @@ def train(env):
   q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state = build_networks(hidden_dim, state_dim, action_dim, lr, network_init_key)
   agent = SACAgent(gamma, q_network_1, q_network_2, policy_network)
 
-  def train_step(batch, action_dim, q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state):
+  def train_step(batch, action_dim, key, q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state):
     states = batch[0]
     rewards = batch[2]
     dones = batch[3]
-    key = random.PRNGKey(1)
     key, a_sample_key = random.split(key)
 
     actions = agent.select_action(policy_state.params, a_sample_key, states, action_dim)
@@ -98,7 +97,6 @@ def train(env):
 
   def train_epoch(batch_size, rng, action_dim, total_env_steps, q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state, converged):
     """Train for a single epoch."""
-    rng, z_rng = random.split(rng)
     steps_per_epoch = 1000
 
     observations, actions, rewards, dones, next_observations = get_samples(env, n=n_samples)
@@ -116,8 +114,8 @@ def train(env):
 
     for _ in tqdm(range(steps_per_epoch)):
       batch = replay_buffer.sample(batch_size)
-
-      q_1_state, q_2_state, policy_state, metrics = train_step(batch, action_dim, q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state)
+      rng, z_rng = random.split(rng)
+      q_1_state, q_2_state, policy_state, metrics = train_step(batch, action_dim, z_rng, q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state)
 
     # eval
     if total_env_steps % 10000 == 0:
@@ -129,8 +127,7 @@ def train(env):
         eval_obs = env.reset()
         total_episode_rewards = []
         while not eval_done:
-          key = random.PRNGKey(1)
-          key, a_sample_eval_key = random.split(key)
+          rng, a_sample_eval_key = random.split(rng)
           eval_action = agent.select_action(policy_state.params, a_sample_eval_key, eval_obs, action_dim)
           eval_obs, eval_reward, eval_done = env.step(eval_action)
           total_episode_rewards.append(eval_reward)
