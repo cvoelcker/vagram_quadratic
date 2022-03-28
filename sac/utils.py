@@ -31,11 +31,11 @@ class ReplayBuffer(object):
         self._compiled = False
 
     def _compile(self):
-        self._obs = jnp.stack(self.observations)
-        self._next_obs = jnp.stack(self.next_observations)
-        self._rewards = jnp.stack(self.rewards)
-        self._actions = jnp.stack(self.actions)
-        self._dones = jnp.stack(self.dones)
+        self._obs = jnp.concatenate(self.observations)
+        self._next_obs = jnp.concatenate(self.next_observations)
+        self._rewards = jnp.concatenate(self.rewards)
+        self._actions = jnp.concatenate(self.actions)
+        self._dones = jnp.concatenate(self.dones)
         self._compiled = True
 
     def sample(self, batch_size):

@@ -94,9 +94,11 @@ def train(env):
     ):
         states = batch[0]
         actions = batch[1]
+        if len(actions.shape) == 1:
+            actions = actions.reshape(-1, 1)
         rewards = batch[2]
         next_states = batch[3]
-        dones = batch[4]
+        dones = batch[4].reshape(-1,1)
         key, a_sample_key = random.split(key)
 
         a_tilde = agent.select_action(
@@ -166,7 +168,7 @@ def train(env):
             env, n=n_samples
         )
 
-        for i in range(n_samples):
+        for i in range(len(observations)):
             obs = observations[i]
             action = actions[i]
             reward = rewards[i]

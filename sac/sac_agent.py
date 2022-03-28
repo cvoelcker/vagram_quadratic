@@ -12,7 +12,7 @@ class SACAgent():
 
     def select_action(self, theta, key, state, action_dim):
         mu, sigma = self.policy_network.apply({'params': theta}, state)
-        action = mu + sigma * random.normal(key, shape=(action_dim,))
+        action = mu + sigma * random.normal(key, shape=mu.shape)
         return action
 
     def min_q_network(self, phi1, phi2, inp):
