@@ -1,3 +1,4 @@
+from gc import unfreeze
 import jax
 import jax.numpy as jnp
 from jax import random
@@ -5,6 +6,7 @@ from jax import random
 import flax
 from flax import linen as nn
 from flax.training import train_state
+from flax.core import freeze, unfreeze
 
 import optax
 from tqdm import tqdm
@@ -15,6 +17,13 @@ from sac_networks import QNetwork, PolicyNetwork
 from utils import ReplayBuffer, Transition
 from environment import make_pendulum, get_samples
 
+
+@jax.jit
+def update(params1, params2, rho):
+  new_params = jax.tree_multimap(
+      lambda param1, param2: param1 * rho + (1 - rho) * param2, params1, params2)
+
+  return new_params
 
 def q_network_init(model, state_dim, action_dim, lr, key):
     key1, key2 = random.split(key)
@@ -38,6 +47,10 @@ def build_networks(hidden_dim: int, state_dim: int, action_dim: int, lr: float, 
     q_1_train_state = q_network_init(q_network_1, state_dim, action_dim, lr, q_key_1)
     q_network_2 = QNetwork(hidden_dim, state_dim, action_dim)
     q_2_train_state = q_network_init(q_network_2, state_dim, action_dim, lr, q_key_2)
+    q_target_1 = QNetwork(hidden_dim, state_dim, action_dim)
+    q_t_1_train_state = q_network_init(q_target_1, state_dim, action_dim, lr, q_key_1)
+    q_target_2 = QNetwork(hidden_dim, state_dim, action_dim)
+    q_t_2_train_state = q_network_init(q_target_2, state_dim, action_dim, lr, q_key_2)
     policy_network = PolicyNetwork(hidden_dim, action_dim)
     policy_train_state = policy_network_init(policy_network, state_dim, lr, policy_key)
     return (
@@ -45,6 +58,10 @@ def build_networks(hidden_dim: int, state_dim: int, action_dim: int, lr: float, 
         q_1_train_state,
         q_network_2,
         q_2_train_state,
+        q_target_1,
+        q_t_1_train_state,
+        q_target_2,
+        q_t_2_train_state,
         policy_network,
         policy_train_state,
     )
@@ -66,6 +83,7 @@ def train(env):
     total_env_steps = 0
     average_rewards = []
     eps = 1e-3
+    rho = 0.995
 
     replay_buffer = ReplayBuffer(2000)
 
@@ -76,10 +94,14 @@ def train(env):
         q_1_state,
         q_network_2,
         q_2_state,
+        q_target_1,
+        q_t_1_train_state,
+        q_target_2,
+        q_t_2_train_state,
         policy_network,
         policy_state,
     ) = build_networks(hidden_dim, state_dim, action_dim, lr, network_init_key)
-    agent = SACAgent(gamma, q_network_1, q_network_2, policy_network)
+    agent = SACAgent(gamma, q_network_1, q_network_2, q_target_1, q_target_2, policy_network)
 
     def train_step(
         batch,
@@ -89,6 +111,10 @@ def train(env):
         q_1_state,
         q_network_2,
         q_2_state,
+        q_target_1, 
+        q_t_1_train_state,
+        q_target_2,
+        q_t_2_train_state,
         policy_network,
         policy_state,
     ):
@@ -102,7 +128,7 @@ def train(env):
         key, a_sample_key = random.split(key)
 
         a_tilde = agent.select_action(
-            policy_state.params, a_sample_key, next_states, action_dim
+            policy_state.params, a_sample_key, next_states
         )
 
         targets = agent.compute_targets(
@@ -129,8 +155,7 @@ def train(env):
                 q_2_state.params,
                 states,
                 alpha,
-                a_sample_key,
-                action_dim,
+                a_sample_key
             )
 
         q_loss, q_grad = jax.value_and_grad(q_loss_function)(
@@ -144,7 +169,10 @@ def train(env):
         q_2_state = q_2_state.apply_gradients(grads=q_grad)
         policy_state = policy_state.apply_gradients(grads=policy_grad)
 
-        return q_1_state, q_2_state, policy_state, {"q": q_loss, "policy": policy_loss}
+        q_t_1_train_state.replace(params=update(q_t_1_train_state.params, q_1_state.params, rho))
+        q_t_2_train_state.replace(params=update(q_t_2_train_state.params, q_2_state.params, rho))
+
+        return q_1_state, q_2_state, q_t_1_train_state, q_t_2_train_state, policy_state, {"q": q_loss, "policy": policy_loss}
 
     # train loop
 
@@ -157,6 +185,10 @@ def train(env):
         q_1_state,
         q_network_2,
         q_2_state,
+        q_target_1, 
+        q_t_1_train_state,
+        q_target_2,
+        q_t_2_train_state,
         policy_network,
         policy_state,
         converged,
@@ -185,7 +217,7 @@ def train(env):
             rng, z_rng = random.split(rng)
             rng, batch_rng = random.split(rng)
             batch = batch_sampler(batch_rng)
-            q_1_state, q_2_state, policy_state, metrics = train_step(
+            q_1_state, q_2_state, q_t_1_train_state, q_t_2_train_state, policy_state, metrics = train_step(
                 batch,
                 action_dim,
                 z_rng,
@@ -193,6 +225,10 @@ def train(env):
                 q_1_state,
                 q_network_2,
                 q_2_state,
+                q_target_1, 
+                q_t_1_train_state,
+                q_target_2,
+                q_t_2_train_state,
                 policy_network,
                 policy_state,
             )
@@ -209,7 +245,7 @@ def train(env):
                 while not eval_done:
                     rng, a_sample_eval_key = random.split(rng)
                     eval_action = agent.select_action(
-                        policy_state.params, a_sample_eval_key, eval_obs, action_dim
+                        policy_state.params, a_sample_eval_key, eval_obs
                     )
                     eval_obs, eval_reward, eval_done, _ = env.step(eval_action)
                     total_episode_rewards.append(eval_reward)
@@ -241,6 +277,10 @@ def train(env):
             q_1_state,
             q_network_2,
             q_2_state,
+            q_target_1, 
+            q_t_1_train_state,
+            q_target_2,
+            q_t_2_train_state,
             policy_network,
             policy_state,
             converged,
