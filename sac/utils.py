@@ -1,29 +1,57 @@
 import collections
-import random
+import jax
 import jax.numpy as jnp
+from jax import random
 
 Transition = collections.namedtuple("Transition", "obs reward done action next_obs")
 
 
 # Adapted from: https://github.com/deepmind/rlax/blob/master/examples/simple_dqn.py
 class ReplayBuffer(object):
-  """A simple Python replay buffer."""
+    """A simple Python replay buffer."""
 
-  def __init__(self, capacity):
-    self.buffer = collections.deque(maxlen=capacity)
+    def __init__(self, capacity):
+        self.counter = 0
+        self.capacity = capacity
 
-  def push(self, env_output):
+        self.observations = []
+        self.actions = []
+        self.rewards = []
+        self.next_observations = []
+        self.dones = []
 
-    if env_output.action is not None:
-      self.buffer.append(
-          (env_output.obs, env_output.action, env_output.reward,
-           env_output.next_obs, env_output.done))
+        self._compiled = False
 
-  def sample(self, batch_size):
-    obs_tm1, a_tm1, r_t, obs_t, done_t = zip(
-        *random.sample(self.buffer, batch_size))
-    return (jnp.stack(obs_tm1), jnp.asarray(a_tm1), jnp.asarray(r_t),
-           jnp.stack(obs_t), jnp.asarray(done_t))
+    def push(self, env_output):
+        self.observations.append(env_output.obs)
+        self.actions.append(env_output.action)
+        self.rewards.append(env_output.reward)
+        self.next_observations.append(env_output.next_obs)
+        self.dones.append(env_output.done)
+        self._compiled = False
 
-  def is_ready(self, batch_size):
-    return batch_size <= len(self.buffer)
+    def _compile(self):
+        self._obs = jnp.stack(self.observations)
+        self._next_obs = jnp.stack(self.next_observations)
+        self._rewards = jnp.stack(self.rewards)
+        self._actions = jnp.stack(self.actions)
+        self._dones = jnp.stack(self.dones)
+        self._compiled = True
+
+    def sample(self, batch_size):
+        if not self._compiled:
+            self._compile()
+
+        def sampler(key):
+            perms = random.randint(
+                key, shape=(batch_size,), minval=0, maxval=self.counter
+            )
+            return (
+                self._obs[perms],
+                self._actions[perms],
+                self._rewards[perms],
+                self._next_obs[perms],
+                self._dones[perms],
+            )
+
+        return jax.jit(sampler)
