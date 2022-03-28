@@ -56,7 +56,6 @@ def train(env):
   batch_size = 32
   n_samples = 1000
   total_env_steps = 0
-  converged = False
   average_rewards = []
   eps = 1e-3
 
@@ -97,7 +96,7 @@ def train(env):
 
   # train loop
 
-  def train_epoch(batch_size, rng, action_dim, total_env_steps, q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state):
+  def train_epoch(batch_size, rng, action_dim, total_env_steps, q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state, converged):
     """Train for a single epoch."""
     rng, z_rng = random.split(rng)
     steps_per_epoch = 1000
@@ -146,12 +145,13 @@ def train(env):
     plt.scatter(average_rewards)
     plt.show()
 
-    return average_rewards
+    return average_rewards, converged
 
   all_average_rewards = []
+  converged = False
   while not converged:
     key, epoch_key = random.split(key)
-    average_rewards = train_epoch(batch_size, epoch_key, action_dim, total_env_steps, q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state)
+    average_rewards, converged = train_epoch(batch_size, epoch_key, action_dim, total_env_steps, q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state, converged)
     all_average_rewards.append(average_rewards)
   return all_average_rewards
 
