@@ -54,4 +54,4 @@ class ReplayBuffer(object):
                 self._dones[perms],
             )
 
-        return jax.jit(sampler)
+        return sampler

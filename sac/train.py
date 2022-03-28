@@ -115,13 +115,13 @@ def train(env):
             alpha,
         )
 
-        @jax.jit
+        # @jax.jit
         def q_loss_function(p1, p2):
             return agent.compute_q_loss(
                 p1, p2, jnp.concatenate((states, actions), axis=-1), targets
             )
 
-        @jax.jit
+        # @jax.jit
         def policy_loss_function(p):
             return agent.compute_policy_loss(
                 p,
@@ -133,10 +133,10 @@ def train(env):
                 action_dim,
             )
 
-        q_loss, q_grad = jax.jit(jax.value_and_grad(q_loss_function))(
+        q_loss, q_grad = jax.value_and_grad(q_loss_function)(
             q_1_state.params, q_2_state.params
         )
-        policy_loss, policy_grad = jax.jit(jax.value_and_grad(policy_loss_function))(
+        policy_loss, policy_grad = jax.value_and_grad(policy_loss_function)(
             policy_state.params
         )
 
@@ -198,7 +198,7 @@ def train(env):
             )
 
         # eval
-        if total_env_steps % 10000 == 0:
+        if total_env_steps % 1000 == 0:
             traj_num = 0
             eval_done = False
             total_rewards = []
@@ -211,7 +211,7 @@ def train(env):
                     eval_action = agent.select_action(
                         policy_state.params, a_sample_eval_key, eval_obs, action_dim
                     )
-                    eval_obs, eval_reward, eval_done = env.step(eval_action)
+                    eval_obs, eval_reward, eval_done, _ = env.step(eval_action)
                     total_episode_rewards.append(eval_reward)
                 traj_num += 1
                 total_rewards.append(total_episode_rewards.mean())
@@ -221,8 +221,10 @@ def train(env):
             if abs(average_rewards[-1] - average_rewards[-2]) < eps:
                 converged = True
 
-            plt.plot(average_rewards)
-            plt.show()
+            # plt.plot(average_rewards)
+            # plt.show()
+
+            print(average_rewards)
 
         return average_rewards, converged
 
