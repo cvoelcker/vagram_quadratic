@@ -69,6 +69,7 @@ def quadratic_vagram_broken_loss(model_prediction, environment_sample, value_fun
     """Compute the quadratic upper bounded 2nd order VAGRAM loss using the Hessian for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = model_prediction - environment_sample
     hes = hessian(value_function)(environment_sample)
+    print(hes)
     return np.square(err.T.dot(hes.dot(err)))
 
 
@@ -78,6 +79,7 @@ def quadratic_vagram_loss(model_prediction, environment_sample, value_function):
     hes = hessian(value_function)(environment_sample)
     l, Q = np.linalg.eigh(hes)
     basis_trans = np.dot(np.transpose(Q), err)
+    print(l)
     return np.square(l * basis_trans).sum()
 
 
