@@ -68,13 +68,15 @@ def train(env):
 
   def train_step(batch, action_dim, key, q_network_1, q_1_state, q_network_2, q_2_state, policy_network, policy_state):
     states = batch[0]
+    actions = batch[1]
     rewards = batch[2]
-    dones = batch[3]
+    next_states = batch[3]
+    dones = batch[4]
     key, a_sample_key = random.split(key)
 
-    actions = agent.select_action(policy_state.params, a_sample_key, states, action_dim)
+    a_tilde = agent.select_action(policy_state.params, a_sample_key, next_states, action_dim)
 
-    targets = agent.compute_targets(q_1_state.params, q_2_state.params, rewards, dones, jnp.concatenate((states, actions), axis=-1), actions, alpha)
+    targets = agent.compute_targets(q_1_state.params, q_2_state.params, rewards, dones, jnp.concatenate((next_states, a_tilde), axis=-1), a_tilde, alpha)
     
     @jax.jit
     def q_loss_function(p1, p2):
