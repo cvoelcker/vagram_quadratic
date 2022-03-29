@@ -113,8 +113,6 @@ def train(env):
         policy_state,
     ):
         states = batch[0]
-        print(states)
-        exit()
         actions = batch[1]
         if len(actions.shape) == 1:
             actions = actions.reshape(-1, 1)
@@ -171,12 +169,8 @@ def train(env):
         q_2_state = q_2_state.apply_gradients(grads=q2_grad)
         policy_state = policy_state.apply_gradients(grads=policy_grad)
 
-        q_t_1_state.replace(
-            params=update(q_t_1_state.params, q_1_state.params, rho)
-        )
-        q_t_2_state.replace(
-            params=update(q_t_2_state.params, q_2_state.params, rho)
-        )
+        q_t_1_state.replace(params=update(q_t_1_state.params, q_1_state.params, rho))
+        q_t_2_state.replace(params=update(q_t_2_state.params, q_2_state.params, rho))
 
         return (
             q_1_state,

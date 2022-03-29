@@ -37,6 +37,7 @@ class ReplayBuffer(object):
         self._actions = jnp.concatenate(self.actions)
         self._dones = jnp.concatenate(self.dones)
         self._compiled = True
+        self.counter = len(self._obs)
 
     def sample(self, batch_size):
         if not self._compiled:
