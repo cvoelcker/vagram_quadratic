@@ -1,4 +1,3 @@
-from gc import unfreeze
 import jax
 import jax.numpy as jnp
 from jax import random
@@ -6,17 +5,14 @@ from jax import random
 import flax
 from flax import linen as nn
 from flax.training import train_state
-from flax.core import freeze, unfreeze
 
 import optax
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sac_agent import (
-    SACAgent,
     compute_policy_loss,
     compute_q_loss,
     compute_targets,
-    select_action,
     select_mean_action,
 )
 
@@ -30,7 +26,6 @@ def update(params1, params2, rho):
     new_params = jax.tree_multimap(
         lambda param1, param2: param1 * rho + (1 - rho) * param2, params1, params2
     )
-
     return new_params
 
 
@@ -52,25 +47,19 @@ def policy_network_init(model, state_dim, lr, key):
 
 def build_networks(hidden_dim: int, state_dim: int, action_dim: int, lr: float, key):
     q_key_1, q_key_2, policy_key = random.split(key, num=3)
-    q_network_1 = QNetwork(hidden_dim, state_dim, action_dim)
-    q_1_train_state = q_network_init(q_network_1, state_dim, action_dim, lr, q_key_1)
-    q_network_2 = QNetwork(hidden_dim, state_dim, action_dim)
-    q_2_train_state = q_network_init(q_network_2, state_dim, action_dim, lr, q_key_2)
-    q_target_1 = QNetwork(hidden_dim, state_dim, action_dim)
-    q_t_1_train_state = q_network_init(q_target_1, state_dim, action_dim, lr, q_key_1)
-    q_target_2 = QNetwork(hidden_dim, state_dim, action_dim)
-    q_t_2_train_state = q_network_init(q_target_2, state_dim, action_dim, lr, q_key_2)
+    q_network = QNetwork(hidden_dim, state_dim, action_dim)
+    q_1_state = q_network_init(q_network, state_dim, action_dim, lr, q_key_1)
+    q_2_state = q_network_init(q_network, state_dim, action_dim, lr, q_key_2)
+    q_t_1_state = q_network_init(q_network, state_dim, action_dim, lr, q_key_1)
+    q_t_2_state = q_network_init(q_network, state_dim, action_dim, lr, q_key_2)
     policy_network = PolicyNetwork(hidden_dim, action_dim)
     policy_train_state = policy_network_init(policy_network, state_dim, lr, policy_key)
     return (
-        q_network_1,
-        q_1_train_state,
-        q_network_2,
-        q_2_train_state,
-        q_target_1,
-        q_t_1_train_state,
-        q_target_2,
-        q_t_2_train_state,
+        q_network,
+        q_1_state,
+        q_2_state,
+        q_t_1_state,
+        q_t_2_state,
         policy_network,
         policy_train_state,
     )
@@ -99,14 +88,11 @@ def train(env):
     # init networks
     key, network_init_key = random.split(key)
     (
-        q_network_1,
+        q_network,
         q_1_state,
-        q_network_2,
         q_2_state,
-        q_target_1,
-        q_t_1_train_state,
-        q_target_2,
-        q_t_2_train_state,
+        q_t_1_state,
+        q_t_2_state,
         policy_network,
         policy_state,
     ) = build_networks(hidden_dim, state_dim, action_dim, lr, network_init_key)
@@ -118,8 +104,8 @@ def train(env):
         key2,
         q_1_state,
         q_2_state,
-        q_t_1_train_state,
-        q_t_2_train_state,
+        q_t_1_state,
+        q_t_2_state,
         policy_state,
     ):
         states = batch[0]
@@ -130,23 +116,23 @@ def train(env):
         next_states = batch[3]
         dones = batch[4].reshape(-1, 1)
 
-        a_tilde = select_action(policy_network, policy_state.params, key1, next_states)
-
         targets = compute_targets(
-            q_network_1,
-            q_1_state.params,
-            q_2_state.params,
+            q_network,
+            policy_network,
+            q_t_1_state.params,
+            q_t_2_state.params,
+            policy_state.params,
             rewards,
             dones,
-            jnp.concatenate((next_states, a_tilde), axis=-1),
-            a_tilde,
+            next_states,
+            key1,
             alpha,
             gamma,
         )
 
         def q_loss_function(p1, p2):
             return compute_q_loss(
-                q_network_1,
+                q_network,
                 p1,
                 p2,
                 jnp.concatenate((states, actions), axis=-1),
@@ -156,7 +142,7 @@ def train(env):
         def policy_loss_function(p):
             return compute_policy_loss(
                 policy_network,
-                q_network_1,
+                q_network,
                 p,
                 q_1_state.params,
                 q_2_state.params,
@@ -176,18 +162,18 @@ def train(env):
         q_2_state = q_2_state.apply_gradients(grads=q_grad)
         policy_state = policy_state.apply_gradients(grads=policy_grad)
 
-        q_t_1_train_state.replace(
-            params=update(q_t_1_train_state.params, q_1_state.params, rho)
+        q_t_1_state.replace(
+            params=update(q_t_1_state.params, q_1_state.params, rho)
         )
-        q_t_2_train_state.replace(
-            params=update(q_t_2_train_state.params, q_2_state.params, rho)
+        q_t_2_state.replace(
+            params=update(q_t_2_state.params, q_2_state.params, rho)
         )
 
         return (
             q_1_state,
             q_2_state,
-            q_t_1_train_state,
-            q_t_2_train_state,
+            q_t_1_state,
+            q_t_2_state,
             policy_state,
             {"q": q_loss, "policy": policy_loss},
         )
@@ -197,16 +183,12 @@ def train(env):
     def train_epoch(
         batch_size,
         rng,
-        action_dim,
         total_env_steps,
-        q_network_1,
+        q_network,
         q_1_state,
-        q_network_2,
         q_2_state,
-        q_target_1,
-        q_t_1_train_state,
-        q_target_2,
-        q_t_2_train_state,
+        q_t_1_state,
+        q_t_2_state,
         policy_network,
         policy_state,
         converged,
@@ -239,8 +221,8 @@ def train(env):
             (
                 q_1_state,
                 q_2_state,
-                q_t_1_train_state,
-                q_t_2_train_state,
+                q_t_1_state,
+                q_t_2_state,
                 policy_state,
                 metrics,
             ) = train_step(
@@ -249,8 +231,8 @@ def train(env):
                 key2,
                 q_1_state,
                 q_2_state,
-                q_t_1_train_state,
-                q_t_2_train_state,
+                q_t_1_state,
+                q_t_2_state,
                 policy_state,
             )
 
@@ -286,16 +268,12 @@ def train(env):
         average_rewards, converged = train_epoch(
             batch_size,
             epoch_key,
-            action_dim,
             total_env_steps,
-            q_network_1,
+            q_network,
             q_1_state,
-            q_network_2,
             q_2_state,
-            q_target_1,
-            q_t_1_train_state,
-            q_target_2,
-            q_t_2_train_state,
+            q_t_1_state,
+            q_t_2_state,
             policy_network,
             policy_state,
             converged,
