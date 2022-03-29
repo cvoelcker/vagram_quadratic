@@ -32,20 +32,20 @@ def update(params1, params2, rho):
 def q_network_init(model, state_dim, action_dim, lr, key):
     key1, key2 = random.split(key)
     initializer = jax.nn.initializers.kaiming_normal()
-    x = initializer(key2, (1, state_dim + action_dim))  # Dummy input
+    x = initializer(key1, (1, state_dim + action_dim))  # Dummy input
     x = jnp.squeeze(x)
     params = model.init(key2, x)["params"]  # Initialization call
-    tx = optax.rmsprop(lr)
+    tx = optax.adam(lr)
     return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 
 def policy_network_init(model, state_dim, lr, key):
     key1, key2 = random.split(key)
     initializer = jax.nn.initializers.kaiming_normal()
-    x = initializer(key2, (1, state_dim))  # Dummy input
+    x = initializer(key1, (1, state_dim))  # Dummy input
     x = jnp.squeeze(x)
     params = model.init(key2, x)["params"]  # Initialization call
-    tx = optax.rmsprop(lr)
+    tx = optax.adam(lr)
     return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 
@@ -74,13 +74,13 @@ def train(env):
     key = random.PRNGKey(0)
 
     # hyperparameters
-    hidden_dim = 64
+    hidden_dim = 128
     state_dim = 3
     action_dim = 1
     gamma = 0.99
     alpha = 0.7
     lr = 3e-4
-    batch_size = 32
+    batch_size = 128
     n_samples = 1000
     total_env_steps = 0
     average_rewards = []
@@ -101,6 +101,7 @@ def train(env):
         policy_state,
     ) = build_networks(hidden_dim, state_dim, action_dim, lr, network_init_key)
 
+    # @jax.jit
     def train_step(
         batch,
         key1,
@@ -112,6 +113,8 @@ def train(env):
         policy_state,
     ):
         states = batch[0]
+        print(states)
+        exit()
         actions = batch[1]
         if len(actions.shape) == 1:
             actions = actions.reshape(-1, 1)
@@ -231,7 +234,7 @@ def train(env):
                 q_t_2_state,
                 policy_state,
                 metrics,
-            ) = jax.jit(train_step)(
+            ) = train_step(
                 batch,
                 key1,
                 key2,

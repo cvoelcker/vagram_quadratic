@@ -11,7 +11,7 @@ def select_action(policy_network, theta, key, state):
 
     eps = 1e-6
     mu, sigma = policy_network.apply({"params": theta}, state)
-    a_tilde = mu + sigma * random.normal(key, shape=mu.shape)
+    a_tilde = mu + jnp.exp(sigma) * random.normal(key, shape=mu.shape)
     gauss_log_prob = pdf_normal(a_tilde, mu, sigma)
     gauss_log_prob -= jnp.sum(jnp.log(jax.nn.relu(1 - jnp.tanh(a_tilde) ** 2) + eps), axis=1, keepdims=True)
     return jnp.tanh(a_tilde), gauss_log_prob
@@ -32,18 +32,26 @@ def min_q_network(q_network, phi1, phi2, inp):
 def compute_targets(q_network, policy_network, phi1, phi2, theta, reward, done, state, key, alpha, gamma):
 
     a_tilde, gauss_log_prob = select_action(policy_network, theta, key, state)
-    return (
+    target = (
         reward
         + gamma * (1 - done) * min_q_network(q_network, phi1, phi2, jnp.concatenate((state, a_tilde), axis=-1))
         - alpha * gauss_log_prob
     )
+    return target
 
 
 def compute_q_loss(q_network, phi1, phi2, inp, target):
-    return jnp.mean(
+    losses = (
         (q_network.apply({"params": phi1}, inp) - target) ** 2
-        + (q_network.apply({"params": phi2}, inp) - target) ** 2
     )
+    # print()
+    # print()
+    # print()
+    # print()
+    # print(losses[:5])
+    # print(q_network.apply({"params": phi1}, inp)[:5])
+    # print(target[:5])
+    return jnp.mean(losses)
 
 
 def compute_policy_loss(
@@ -51,7 +59,5 @@ def compute_policy_loss(
 ):
     
     a_tilde, gauss_log_prob = select_action(policy_network, theta, key, state)
-    return jnp.mean(
-        min_q_network(q_network, phi1, phi2, jnp.concatenate((state, a_tilde), axis=-1))
-        - alpha * gauss_log_prob
-    )
+    losses = min_q_network(q_network, phi1, phi2, jnp.concatenate((state, a_tilde), axis=-1)) - alpha * gauss_log_prob
+    return jnp.mean(losses)
