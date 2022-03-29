@@ -150,15 +150,18 @@ def train(env):
                 key2,
             )
 
-        q_loss, q_grad = jax.value_and_grad(q_loss_function)(
+        q_loss, q1_grad = jax.value_and_grad(q_loss_function)(
             q_1_state.params, q_2_state.params
+        )
+        q_loss, q2_grad = jax.value_and_grad(q_loss_function)(
+            q_2_state.params, q_1_state.params
         )
         policy_loss, policy_grad = jax.value_and_grad(policy_loss_function)(
             policy_state.params
         )
 
-        q_1_state = q_1_state.apply_gradients(grads=q_grad)
-        q_2_state = q_2_state.apply_gradients(grads=q_grad)
+        q_1_state = q_1_state.apply_gradients(grads=q1_grad)
+        q_2_state = q_2_state.apply_gradients(grads=q2_grad)
         policy_state = policy_state.apply_gradients(grads=policy_grad)
 
         q_t_1_state.replace(
@@ -234,6 +237,7 @@ def train(env):
                 q_t_2_state,
                 policy_state,
             )
+        print(metrics)
 
         # eval
         def gather_eval_trajectory():
