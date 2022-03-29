@@ -31,7 +31,9 @@ def update(params1, params2, rho):
 
 def q_network_init(model, state_dim, action_dim, lr, key):
     key1, key2 = random.split(key)
-    x = random.normal(key1, (state_dim + action_dim,))  # Dummy input
+    initializer = jax.nn.initializers.kaiming_normal()
+    x = initializer(key2, (1, state_dim + action_dim))  # Dummy input
+    x = jnp.squeeze(x)
     params = model.init(key2, x)["params"]  # Initialization call
     tx = optax.rmsprop(lr)
     return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
@@ -39,7 +41,9 @@ def q_network_init(model, state_dim, action_dim, lr, key):
 
 def policy_network_init(model, state_dim, lr, key):
     key1, key2 = random.split(key)
-    x = random.normal(key1, (state_dim,))  # Dummy input
+    initializer = jax.nn.initializers.kaiming_normal()
+    x = initializer(key2, (1, state_dim))  # Dummy input
+    x = jnp.squeeze(x)
     params = model.init(key2, x)["params"]  # Initialization call
     tx = optax.rmsprop(lr)
     return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
