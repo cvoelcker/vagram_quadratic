@@ -256,13 +256,16 @@ def train(env):
 
         # eval
         def gather_eval_trajectory():
+            @jax.jit
+            def action(obs):
+                return select_mean_action(policy_network, policy_state.params, obs)
+
             eval_done = False
             eval_obs = env.reset()
             total_episode_rewards = 0
             while not eval_done:
-                eval_action = select_mean_action(
-                    policy_network, policy_state.params, eval_obs
-                )
+                eval_obs = jax.device_put(eval_obs)
+                eval_action = action(eval_obs)
                 eval_obs, eval_reward, eval_done, _ = env.step(eval_action)
                 total_episode_rewards += eval_reward
             return total_episode_rewards
