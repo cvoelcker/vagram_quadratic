@@ -268,7 +268,7 @@ def train(env):
             return total_episode_rewards
 
         average_rewards = 20
-        for i in range(20):
+        for i in tqdm(range(20)):
             average_rewards += gather_eval_trajectory()
         average_rewards /= 20
 

@@ -56,6 +56,7 @@ def select_action(policy_network, theta, key, state):
     return action
 
 
+@jax.jit
 def select_mean_action(policy_network, theta, state):
     mu, _ = policy_network.apply({"params": theta}, state)
     return mu
