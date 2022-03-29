@@ -73,7 +73,7 @@ def train(env):
     hidden_dim = 64
     state_dim = 3
     action_dim = 1
-    gamma = 0.9
+    gamma = 0.99
     alpha = 0.7
     lr = 3e-4
     batch_size = 32
@@ -97,7 +97,6 @@ def train(env):
         policy_state,
     ) = build_networks(hidden_dim, state_dim, action_dim, lr, network_init_key)
 
-    @jax.jit
     def train_step(
         batch,
         key1,
@@ -225,7 +224,7 @@ def train(env):
                 q_t_2_state,
                 policy_state,
                 metrics,
-            ) = train_step(
+            ) = jax.jit(train_step)(
                 batch,
                 key1,
                 key2,

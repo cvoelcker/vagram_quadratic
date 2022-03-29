@@ -13,14 +13,13 @@ def select_action(policy_network, theta, key, state):
     mu, sigma = policy_network.apply({"params": theta}, state)
     a_tilde = mu + sigma * random.normal(key, shape=mu.shape)
     gauss_log_prob = pdf_normal(a_tilde, mu, sigma)
-    gauss_log_prob -= jnp.sum(jnp.log(jax.nn.relu(1 - jnp.tanh(a_tilde) ** 2) + eps), axis=1)
-    return a_tilde, gauss_log_prob
+    gauss_log_prob -= jnp.sum(jnp.log(jax.nn.relu(1 - jnp.tanh(a_tilde) ** 2) + eps), axis=1, keepdims=True)
+    return jnp.tanh(a_tilde), gauss_log_prob
 
 
-@jax.jit
 def select_mean_action(policy_network, theta, state):
     mu, _ = policy_network.apply({"params": theta}, state)
-    return mu
+    return jnp.tanh(mu)
 
 
 def min_q_network(q_network, phi1, phi2, inp):
