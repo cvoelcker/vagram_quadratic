@@ -11,7 +11,14 @@ from flax.core import freeze, unfreeze
 import optax
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from sac_agent import SACAgent
+from sac_agent import (
+    SACAgent,
+    compute_policy_loss,
+    compute_q_loss,
+    compute_targets,
+    select_action,
+    select_mean_action,
+)
 
 from sac_networks import QNetwork, PolicyNetwork
 from utils import ReplayBuffer, Transition
@@ -20,10 +27,12 @@ from environment import make_pendulum, get_samples
 
 @jax.jit
 def update(params1, params2, rho):
-  new_params = jax.tree_multimap(
-      lambda param1, param2: param1 * rho + (1 - rho) * param2, params1, params2)
+    new_params = jax.tree_multimap(
+        lambda param1, param2: param1 * rho + (1 - rho) * param2, params1, params2
+    )
 
-  return new_params
+    return new_params
+
 
 def q_network_init(model, state_dim, action_dim, lr, key):
     key1, key2 = random.split(key)
@@ -101,21 +110,16 @@ def train(env):
         policy_network,
         policy_state,
     ) = build_networks(hidden_dim, state_dim, action_dim, lr, network_init_key)
-    agent = SACAgent(gamma, q_network_1, q_network_2, q_target_1, q_target_2, policy_network)
 
+    @jax.jit
     def train_step(
         batch,
-        action_dim,
-        key,
-        q_network_1,
+        key1,
+        key2,
         q_1_state,
-        q_network_2,
         q_2_state,
-        q_target_1, 
         q_t_1_train_state,
-        q_target_2,
         q_t_2_train_state,
-        policy_network,
         policy_state,
     ):
         states = batch[0]
@@ -124,14 +128,12 @@ def train(env):
             actions = actions.reshape(-1, 1)
         rewards = batch[2]
         next_states = batch[3]
-        dones = batch[4].reshape(-1,1)
-        key, a_sample_key = random.split(key)
+        dones = batch[4].reshape(-1, 1)
 
-        a_tilde = agent.select_action(
-            policy_state.params, a_sample_key, next_states
-        )
+        a_tilde = select_action(policy_network, policy_state.params, key1, next_states)
 
-        targets = agent.compute_targets(
+        targets = compute_targets(
+            q_network_1,
             q_1_state.params,
             q_2_state.params,
             rewards,
@@ -139,23 +141,28 @@ def train(env):
             jnp.concatenate((next_states, a_tilde), axis=-1),
             a_tilde,
             alpha,
+            gamma,
         )
 
-        # @jax.jit
         def q_loss_function(p1, p2):
-            return agent.compute_q_loss(
-                p1, p2, jnp.concatenate((states, actions), axis=-1), targets
+            return compute_q_loss(
+                q_network_1,
+                p1,
+                p2,
+                jnp.concatenate((states, actions), axis=-1),
+                targets,
             )
 
-        # @jax.jit
         def policy_loss_function(p):
-            return agent.compute_policy_loss(
+            return compute_policy_loss(
+                policy_network,
+                q_network_1,
                 p,
                 q_1_state.params,
                 q_2_state.params,
                 states,
                 alpha,
-                a_sample_key
+                key2,
             )
 
         q_loss, q_grad = jax.value_and_grad(q_loss_function)(
@@ -169,10 +176,21 @@ def train(env):
         q_2_state = q_2_state.apply_gradients(grads=q_grad)
         policy_state = policy_state.apply_gradients(grads=policy_grad)
 
-        q_t_1_train_state.replace(params=update(q_t_1_train_state.params, q_1_state.params, rho))
-        q_t_2_train_state.replace(params=update(q_t_2_train_state.params, q_2_state.params, rho))
+        q_t_1_train_state.replace(
+            params=update(q_t_1_train_state.params, q_1_state.params, rho)
+        )
+        q_t_2_train_state.replace(
+            params=update(q_t_2_train_state.params, q_2_state.params, rho)
+        )
 
-        return q_1_state, q_2_state, q_t_1_train_state, q_t_2_train_state, policy_state, {"q": q_loss, "policy": policy_loss}
+        return (
+            q_1_state,
+            q_2_state,
+            q_t_1_train_state,
+            q_t_2_train_state,
+            policy_state,
+            {"q": q_loss, "policy": policy_loss},
+        )
 
     # train loop
 
@@ -185,7 +203,7 @@ def train(env):
         q_1_state,
         q_network_2,
         q_2_state,
-        q_target_1, 
+        q_target_1,
         q_t_1_train_state,
         q_target_2,
         q_t_2_train_state,
@@ -214,53 +232,47 @@ def train(env):
         batch_sampler = replay_buffer.sample(batch_size)
 
         for _ in tqdm(range(steps_per_epoch)):
-            rng, z_rng = random.split(rng)
+            rng, key1 = random.split(rng)
+            rng, key2 = random.split(rng)
             rng, batch_rng = random.split(rng)
             batch = batch_sampler(batch_rng)
-            q_1_state, q_2_state, q_t_1_train_state, q_t_2_train_state, policy_state, metrics = train_step(
-                batch,
-                action_dim,
-                z_rng,
-                q_network_1,
+            (
                 q_1_state,
-                q_network_2,
                 q_2_state,
-                q_target_1, 
                 q_t_1_train_state,
-                q_target_2,
                 q_t_2_train_state,
-                policy_network,
+                policy_state,
+                metrics,
+            ) = train_step(
+                batch,
+                key1,
+                key2,
+                q_1_state,
+                q_2_state,
+                q_t_1_train_state,
+                q_t_2_train_state,
                 policy_state,
             )
 
         # eval
-        if total_env_steps % 1000 == 0:
-            traj_num = 0
+        def gather_eval_trajectory():
             eval_done = False
-            total_rewards = []
+            eval_obs = env.reset()
+            total_episode_rewards = 0
+            while not eval_done:
+                eval_action = select_mean_action(
+                    policy_network, policy_state.params, eval_obs
+                )
+                eval_obs, eval_reward, eval_done, _ = env.step(eval_action)
+                total_episode_rewards += eval_reward
+            return total_episode_rewards
 
-            while traj_num < 20:
-                eval_obs = env.reset()
-                total_episode_rewards = []
-                while not eval_done:
-                    rng, a_sample_eval_key = random.split(rng)
-                    eval_action = agent.select_action(
-                        policy_state.params, a_sample_eval_key, eval_obs
-                    )
-                    eval_obs, eval_reward, eval_done, _ = env.step(eval_action)
-                    total_episode_rewards.append(eval_reward)
-                traj_num += 1
-                total_rewards.append(total_episode_rewards.mean())
+        average_rewards = 20
+        for i in range(20):
+            average_rewards += gather_eval_trajectory()
+        average_rewards /= 20
 
-            average_rewards.append(total_rewards.mean())
-
-            if abs(average_rewards[-1] - average_rewards[-2]) < eps:
-                converged = True
-
-            # plt.plot(average_rewards)
-            # plt.show()
-
-            print(average_rewards)
+        print(average_rewards)
 
         return average_rewards, converged
 
@@ -277,7 +289,7 @@ def train(env):
             q_1_state,
             q_network_2,
             q_2_state,
-            q_target_1, 
+            q_target_1,
             q_t_1_train_state,
             q_target_2,
             q_t_2_train_state,
