@@ -116,10 +116,9 @@ def train(env):
         actions = batch[1]
         if len(actions.shape) == 1:
             actions = actions.reshape(-1, 1)
-        rewards = batch[2]
+        rewards = batch[2].reshape(-1, 1)
         next_states = batch[3]
         dones = batch[4].reshape(-1, 1)
-
         targets = compute_targets(
             q_network,
             policy_network,

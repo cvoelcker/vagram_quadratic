@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 from jax import random
 
-Transition = collections.namedtuple("Transition", "obs reward done action next_obs")
+Transition = collections.namedtuple("Transition", "obs action reward done next_obs")
 
 
 # Adapted from: https://github.com/deepmind/rlax/blob/master/examples/simple_dqn.py
