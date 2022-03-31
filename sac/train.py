@@ -83,6 +83,7 @@ def train(env):
     average_rewards = []
     eps = 1e-3
     rho = 0.995
+    act_limit = env.action_space.high[0]
 
     replay_buffer = ReplayBuffer(2000)
 
@@ -128,6 +129,7 @@ def train(env):
             key1,
             alpha,
             gamma,
+            act_limit
         )
 
         def q_loss_function(p):
@@ -148,6 +150,7 @@ def train(env):
                 states,
                 alpha,
                 key2,
+                act_limit
             )
 
         q_loss, q1_grad = jax.value_and_grad(q_loss_function)(
