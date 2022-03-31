@@ -155,10 +155,10 @@ def train(env):
                 act_limit
             )
 
-        q_loss, q1_grad = jax.value_and_grad(q_loss_function)(
+        q1_loss, q1_grad = jax.value_and_grad(q_loss_function)(
             q_1_state.params
         )
-        q_loss, q2_grad = jax.value_and_grad(q_loss_function)(
+        q2_loss, q2_grad = jax.value_and_grad(q_loss_function)(
             q_2_state.params
         )
         policy_loss, policy_grad = jax.value_and_grad(policy_loss_function)(
@@ -178,7 +178,7 @@ def train(env):
             q_t_1_state,
             q_t_2_state,
             policy_state,
-            {"q": q_loss, "policy": policy_loss},
+            {"q": (q1_loss + q2_loss).mean(), "policy": policy_loss},
         )
 
     # train loop
@@ -217,7 +217,6 @@ def train(env):
         total_env_steps += n_samples
 
         batch_sampler = replay_buffer.sample(batch_size)
-
         for _ in tqdm(range(steps_per_epoch)):
             rng, key1, key2, batch_rng = random.split(rng, num=4)
             batch = batch_sampler(batch_rng)

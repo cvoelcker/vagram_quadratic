@@ -51,13 +51,6 @@ def compute_q_loss(q_network, phi, inp, target):
     losses = (
         (q_network.apply({"params": phi}, inp) - target) ** 2
     )
-    # print()
-    # print()
-    # print()
-    # print()
-    # print(losses[:5])
-    # print(q_network.apply({"params": phi1}, inp)[:5])
-    # print(target[:5])
     return jnp.mean(losses)
 
 
