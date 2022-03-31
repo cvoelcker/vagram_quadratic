@@ -14,13 +14,12 @@ def pdf_normal(x, mu, sigma):
 
 
 def select_action(policy_network, theta, key, state, act_limit):
-
     mu, log_std = policy_network.apply({"params": theta}, state)
     log_std = jnp.clip(log_std, LOG_STD_MIN, LOG_STD_MAX)
     dist = tfd.Normal(loc=mu, scale=jnp.exp(log_std))
     action = dist.sample(seed=key)
-    log_prob_a = dist.log_prob(action).sum(axis=-1)
-    log_prob_a -= (2*(jnp.log(2) - action - jax.nn.softplus(-2*action))).sum(axis=1)
+    log_prob_a = dist.log_prob(action)
+    log_prob_a -= (2*(jnp.log(2) - action - jax.nn.softplus(-2*action)))
     action = jnp.tanh(action)
     action = act_limit * action
     return action, log_prob_a
@@ -39,7 +38,6 @@ def min_q_network(q_network, phi1, phi2, inp):
 
 
 def compute_targets(q_network, policy_network, phi1, phi2, theta, reward, done, state, key, alpha, gamma, act_limit):
-
     a_tilde, gauss_log_prob = select_action(policy_network, theta, key, state, act_limit)
     target = (
         reward

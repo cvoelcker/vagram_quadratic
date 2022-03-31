@@ -118,6 +118,7 @@ def train(env):
         rewards = batch[2].reshape(-1, 1)
         next_states = batch[3]
         dones = batch[4].reshape(-1, 1)
+
         targets = compute_targets(
             q_network,
             policy_network,
@@ -198,12 +199,12 @@ def train(env):
     ):
         """Train for a single epoch."""
         steps_per_epoch = 1000
-
         for _ in range(n_samples):
             if total_env_steps < n_samples:
               action = env.action_space.sample()
             else: 
-              action = select_action(policy_network, policy_state.params, observation)
+              rng, a_rng = random.split(rng)
+              action, _ = select_action(policy_network, policy_state.params, a_rng, observation, act_limit)
 
             next_obs, reward, done, _ = env.step(action)
             env_output = Transition(jnp.array([observation]), jnp.array([action]), jnp.array([reward]), jnp.array([done]), jnp.array([next_obs]))
@@ -218,7 +219,7 @@ def train(env):
         batch_sampler = replay_buffer.sample(batch_size)
 
         for _ in tqdm(range(steps_per_epoch)):
-            rng, key1, key2, batch_rng = random.split(rng, num=3)
+            rng, key1, key2, batch_rng = random.split(rng, num=4)
             batch = batch_sampler(batch_rng)
             (
                 q_1_state,
@@ -262,13 +263,13 @@ def train(env):
 
         print(average_rewards)
 
-        return average_rewards, converged
+        return average_rewards, total_env_steps, converged
 
     all_average_rewards = []
     converged = False
     while not converged:
         key, epoch_key = random.split(key)
-        average_rewards, converged = train_epoch(
+        average_rewards, total_env_steps, converged = train_epoch(
             batch_size,
             epoch_key,
             total_env_steps,
