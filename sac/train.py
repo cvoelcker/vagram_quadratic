@@ -1,3 +1,4 @@
+from copy import deepcopy
 import jax
 import jax.numpy as jnp
 from jax import random
@@ -29,35 +30,31 @@ def update(params1, params2, rho):
     return new_params
 
 
-def q_network_init(model, state_dim, action_dim, lr, key):
+def q_network_init(env, model, lr, key):
     key1, key2 = random.split(key)
-    initializer = jax.nn.initializers.kaiming_normal()
-    x = initializer(key1, (1, state_dim + action_dim))  # Dummy input
-    x = jnp.squeeze(x)
+    x = jnp.concatenate((env.observation_space.sample(), env.action_space.sample()), axis=-1)
     params = model.init(key2, x)["params"]  # Initialization call
     tx = optax.adam(lr)
     return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 
-def policy_network_init(model, state_dim, lr, key):
+def policy_network_init(env, model, lr, key):
     key1, key2 = random.split(key)
-    initializer = jax.nn.initializers.kaiming_normal()
-    x = initializer(key1, (1, state_dim))  # Dummy input
-    x = jnp.squeeze(x)
+    x = env.observation_space.sample()
     params = model.init(key2, x)["params"]  # Initialization call
     tx = optax.adam(lr)
     return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 
-def build_networks(hidden_dim: int, state_dim: int, action_dim: int, lr: float, key):
+def build_networks(env, hidden_dim: int, state_dim: int, action_dim: int, lr: float, key):
     q_key_1, q_key_2, policy_key = random.split(key, num=3)
     q_network = QNetwork(hidden_dim, state_dim, action_dim)
-    q_1_state = q_network_init(q_network, state_dim, action_dim, lr, q_key_1)
-    q_2_state = q_network_init(q_network, state_dim, action_dim, lr, q_key_2)
-    q_t_1_state = q_network_init(q_network, state_dim, action_dim, lr, q_key_1)
-    q_t_2_state = q_network_init(q_network, state_dim, action_dim, lr, q_key_2)
+    q_1_state = q_network_init(env, q_network, lr, q_key_1)
+    q_2_state = q_network_init(env, q_network, lr, q_key_2)
+    q_t_1_state = deepcopy(q_1_state)
+    q_t_2_state = deepcopy(q_2_state)
     policy_network = PolicyNetwork(hidden_dim, action_dim)
-    policy_train_state = policy_network_init(policy_network, state_dim, lr, policy_key)
+    policy_train_state = policy_network_init(env, policy_network, lr, policy_key)
     return (
         q_network,
         q_1_state,
@@ -99,9 +96,9 @@ def train(env):
         q_t_2_state,
         policy_network,
         policy_state,
-    ) = build_networks(hidden_dim, state_dim, action_dim, lr, network_init_key)
+    ) = build_networks(env, hidden_dim, state_dim, action_dim, lr, network_init_key)
 
-    # @jax.jit
+    @jax.jit
     def train_step(
         batch,
         key1,
@@ -133,11 +130,10 @@ def train(env):
             gamma,
         )
 
-        def q_loss_function(p1, p2):
+        def q_loss_function(p):
             return compute_q_loss(
                 q_network,
-                p1,
-                p2,
+                p,
                 jnp.concatenate((states, actions), axis=-1),
                 targets,
             )
@@ -155,10 +151,10 @@ def train(env):
             )
 
         q_loss, q1_grad = jax.value_and_grad(q_loss_function)(
-            q_1_state.params, q_2_state.params
+            q_1_state.params
         )
         q_loss, q2_grad = jax.value_and_grad(q_loss_function)(
-            q_2_state.params, q_1_state.params
+            q_2_state.params
         )
         policy_loss, policy_grad = jax.value_and_grad(policy_loss_function)(
             policy_state.params
@@ -168,8 +164,8 @@ def train(env):
         q_2_state = q_2_state.apply_gradients(grads=q2_grad)
         policy_state = policy_state.apply_gradients(grads=policy_grad)
 
-        q_t_1_state.replace(params=update(q_t_1_state.params, q_1_state.params, rho))
-        q_t_2_state.replace(params=update(q_t_2_state.params, q_2_state.params, rho))
+        q_t_1_state = q_t_1_state.replace(params=update(q_t_1_state.params, q_1_state.params, rho))
+        q_t_2_state = q_t_2_state.replace(params=update(q_t_2_state.params, q_2_state.params, rho))
 
         return (
             q_1_state,

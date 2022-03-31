@@ -11,17 +11,17 @@ class QNetwork(nn.Module):
     def __call__(self, x):
         x = nn.Dense(
                 self.hidden_size,
-                kernel_init=jax.nn.initializers.he_normal()
+                kernel_init=jax.nn.initializers.orthogonal()
                 )(x)
         x = nn.relu(x)
         x = nn.Dense(
                 self.hidden_size,
-                kernel_init=jax.nn.initializers.he_normal()
+                kernel_init=jax.nn.initializers.orthogonal()
                 )(x)
         x = nn.relu(x)
         return nn.Dense(
                 1,
-                kernel_init=jax.nn.initializers.he_normal()
+                kernel_init=jax.nn.initializers.orthogonal()
                 )(x)
 
 class PolicyNetwork(nn.Module):
@@ -32,21 +32,21 @@ class PolicyNetwork(nn.Module):
     def __call__(self, x):
         x = nn.Dense(
                 self.hidden_size,
-                kernel_init=jax.nn.initializers.he_normal()
+                kernel_init=jax.nn.initializers.orthogonal()
                 )(x)
         x = nn.relu(x)
         x = nn.Dense(
                 self.hidden_size,
-                kernel_init=jax.nn.initializers.he_normal()
+                kernel_init=jax.nn.initializers.orthogonal()
                 )(x)
         x = nn.relu(x)
         mu = nn.Dense(
                 self.action_dim,
-                kernel_init=jax.nn.initializers.he_normal()
+                kernel_init=jax.nn.initializers.orthogonal()
                 )(x)
         logvar = nn.Dense(
                 self.action_dim,
-                kernel_init=jax.nn.initializers.he_normal()
+                kernel_init=jax.nn.initializers.orthogonal()
                 )(x)
         return mu, logvar
 

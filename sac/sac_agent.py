@@ -40,9 +40,9 @@ def compute_targets(q_network, policy_network, phi1, phi2, theta, reward, done, 
     return target
 
 
-def compute_q_loss(q_network, phi1, phi2, inp, target):
+def compute_q_loss(q_network, phi, inp, target):
     losses = (
-        (q_network.apply({"params": phi1}, inp) - target) ** 2
+        (q_network.apply({"params": phi}, inp) - target) ** 2
     )
     # print()
     # print()
@@ -60,4 +60,6 @@ def compute_policy_loss(
     
     a_tilde, gauss_log_prob = select_action(policy_network, theta, key, state)
     losses = min_q_network(q_network, phi1, phi2, jnp.concatenate((state, a_tilde), axis=-1)) - alpha * gauss_log_prob
-    return jnp.mean(losses)
+    
+    # Change of sign because it'll be used for gradient ascent.
+    return -jnp.mean(losses)
