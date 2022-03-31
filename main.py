@@ -13,7 +13,7 @@ from flax.training import train_state
 
 import optax
 
-import sac.environment as environment
+import environment as environment
 
 
 class ValueFunction:

@@ -1,4 +1,5 @@
 from copy import deepcopy
+import gym
 import jax
 import jax.numpy as jnp
 from jax import random
@@ -14,12 +15,12 @@ from sac_agent import (
     compute_policy_loss,
     compute_q_loss,
     compute_targets,
+    select_action,
     select_mean_action,
 )
 
 from sac_networks import QNetwork, PolicyNetwork
 from utils import ReplayBuffer, Transition
-from environment import make_pendulum, get_samples
 
 
 @jax.jit
@@ -81,9 +82,9 @@ def train(env):
     n_samples = 1000
     total_env_steps = 0
     average_rewards = []
-    eps = 1e-3
     rho = 0.995
     act_limit = env.action_space.high[0]
+    observation = env.reset()
 
     replay_buffer = ReplayBuffer(2000)
 
@@ -193,31 +194,31 @@ def train(env):
         policy_network,
         policy_state,
         converged,
+        observation
     ):
         """Train for a single epoch."""
         steps_per_epoch = 1000
 
-        observations, actions, rewards, dones, next_observations = get_samples(
-            env, n=n_samples
-        )
+        for _ in range(n_samples):
+            if total_env_steps < n_samples:
+              action = env.action_space.sample()
+            else: 
+              action = select_action(policy_network, policy_state.params, observation)
 
-        for i in range(len(observations)):
-            obs = observations[i]
-            action = actions[i]
-            reward = rewards[i]
-            done = dones[i]
-            next_obs = next_observations[i]
-            env_output = Transition(obs, action, reward, done, next_obs)
+            next_obs, reward, done, _ = env.step(action)
+            env_output = Transition(jnp.array([observation]), jnp.array([action]), jnp.array([reward]), jnp.array([done]), jnp.array([next_obs]))
             replay_buffer.push(env_output)
+            if not done:
+              observation = next_obs
+            else:
+              observation = env.reset()
 
         total_env_steps += n_samples
 
         batch_sampler = replay_buffer.sample(batch_size)
 
         for _ in tqdm(range(steps_per_epoch)):
-            rng, key1 = random.split(rng)
-            rng, key2 = random.split(rng)
-            rng, batch_rng = random.split(rng)
+            rng, key1, key2, batch_rng = random.split(rng, num=3)
             batch = batch_sampler(batch_rng)
             (
                 q_1_state,
@@ -254,7 +255,7 @@ def train(env):
                 total_episode_rewards += eval_reward
             return total_episode_rewards
 
-        average_rewards = 20
+        average_rewards = 0
         for i in tqdm(range(20)):
             average_rewards += gather_eval_trajectory()
         average_rewards /= 20
@@ -279,11 +280,12 @@ def train(env):
             policy_network,
             policy_state,
             converged,
+            observation,
         )
         all_average_rewards.append(average_rewards)
     return all_average_rewards
 
 
 if __name__ == "__main__":
-    env = make_pendulum()
+    env = gym.make("Pendulum-v1")
     all_average_rewards = train(env)
