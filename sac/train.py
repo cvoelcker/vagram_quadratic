@@ -1,4 +1,6 @@
 from copy import deepcopy
+
+import numpy as np
 import gym
 import jax
 import jax.numpy as jnp
@@ -26,28 +28,32 @@ from utils import ReplayBuffer, Transition
 @jax.jit
 def update(params1, params2, rho):
     new_params = jax.tree_multimap(
-        lambda param1, param2: param1 * rho + (1 - rho) * param2, params1, params2
+        (lambda param1, param2: param1 * rho + (1 - rho) * param2), params1, params2
     )
     return new_params
 
 
 def q_network_init(env, model, lr, key):
-    key1, key2 = random.split(key)
-    x = jnp.concatenate((env.observation_space.sample(), env.action_space.sample()), axis=-1)
-    params = model.init(key2, x)["params"]  # Initialization call
+    x = jnp.concatenate(
+        (env.observation_space.sample(), env.action_space.sample()), axis=-1
+    )
+    params = model.init(key, x)["params"]  # Initialization call
     tx = optax.adam(lr)
+    # tx = optax.chain(optax.clip(10.0), optax.adam(lr))
     return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 
 def policy_network_init(env, model, lr, key):
-    key1, key2 = random.split(key)
     x = env.observation_space.sample()
-    params = model.init(key2, x)["params"]  # Initialization call
+    params = model.init(key, x)["params"]  # Initialization call
     tx = optax.adam(lr)
+    # tx = optax.chain(optax.clip(10.0), optax.adam(lr))
     return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 
-def build_networks(env, hidden_dim: int, state_dim: int, action_dim: int, lr: float, key):
+def build_networks(
+    env, hidden_dim: int, state_dim: int, action_dim: int, lr: float, key
+):
     q_key_1, q_key_2, policy_key = random.split(key, num=3)
     q_network = QNetwork(hidden_dim, state_dim, action_dim)
     q_1_state = q_network_init(env, q_network, lr, q_key_1)
@@ -65,6 +71,17 @@ def build_networks(env, hidden_dim: int, state_dim: int, action_dim: int, lr: fl
         policy_network,
         policy_train_state,
     )
+
+
+def dict_average(lod):
+    keys = lod[0].keys()
+    d = {k: 0.0 for k in keys}
+    for _d in lod:
+        for k in keys:
+            d[k] += _d[k]
+    for k in keys:
+        d[k] /= len(lod)
+    return d
 
 
 def train(env):
@@ -100,7 +117,7 @@ def train(env):
         policy_state,
     ) = build_networks(env, hidden_dim, state_dim, action_dim, lr, network_init_key)
 
-    @jax.jit
+    # @jax.jit
     def train_step(
         batch,
         key1,
@@ -119,6 +136,14 @@ def train(env):
         next_states = batch[3]
         dones = batch[4].reshape(-1, 1)
 
+        # # DEBUG output printing
+        # x = jnp.concatenate((states, actions), axis=-1)
+        # outputs = q_1_state.apply_fn({"params": q_1_state.params}, x)
+        # print(outputs)
+        # print(outputs.mean())
+        # print(outputs.var())
+        # exit()
+
         targets = compute_targets(
             q_network,
             policy_network,
@@ -131,7 +156,7 @@ def train(env):
             key1,
             alpha,
             gamma,
-            act_limit
+            act_limit,
         )
 
         def q_loss_function(p):
@@ -152,15 +177,11 @@ def train(env):
                 states,
                 alpha,
                 key2,
-                act_limit
+                act_limit,
             )
 
-        q1_loss, q1_grad = jax.value_and_grad(q_loss_function)(
-            q_1_state.params
-        )
-        q2_loss, q2_grad = jax.value_and_grad(q_loss_function)(
-            q_2_state.params
-        )
+        q1_loss, q1_grad = jax.value_and_grad(q_loss_function)(q_1_state.params)
+        q2_loss, q2_grad = jax.value_and_grad(q_loss_function)(q_2_state.params)
         policy_loss, policy_grad = jax.value_and_grad(policy_loss_function)(
             policy_state.params
         )
@@ -169,8 +190,12 @@ def train(env):
         q_2_state = q_2_state.apply_gradients(grads=q2_grad)
         policy_state = policy_state.apply_gradients(grads=policy_grad)
 
-        q_t_1_state = q_t_1_state.replace(params=update(q_t_1_state.params, q_1_state.params, rho))
-        q_t_2_state = q_t_2_state.replace(params=update(q_t_2_state.params, q_2_state.params, rho))
+        q_t_1_state = q_t_1_state.replace(
+            params=update(q_t_1_state.params, q_1_state.params, rho)
+        )
+        q_t_2_state = q_t_2_state.replace(
+            params=update(q_t_2_state.params, q_2_state.params, rho)
+        )
 
         return (
             q_1_state,
@@ -182,6 +207,10 @@ def train(env):
         )
 
     # train loop
+
+    @jax.jit
+    def static_select_action(p, a_rng, observations, act_limit):
+        return select_action(policy_network, p, a_rng, observation, act_limit)
 
     def train_epoch(
         batch_size,
@@ -195,28 +224,37 @@ def train(env):
         policy_network,
         policy_state,
         converged,
-        observation
+        observation,
     ):
         """Train for a single epoch."""
         steps_per_epoch = 1000
-        for _ in range(n_samples):
+        for _ in tqdm(range(n_samples)):
             if total_env_steps < n_samples:
-              action = env.action_space.sample()
-            else: 
-              rng, a_rng = random.split(rng)
-              action, _ = select_action(policy_network, policy_state.params, a_rng, observation, act_limit)
+                action = env.action_space.sample()
+            else:
+                rng, a_rng = random.split(rng)
+                action, _ = static_select_action(
+                    policy_state.params, a_rng, observation, act_limit
+                )
 
             next_obs, reward, done, _ = env.step(action)
-            env_output = Transition(jnp.array([observation]), jnp.array([action]), jnp.array([reward]), jnp.array([done]), jnp.array([next_obs]))
+            env_output = Transition(
+                jnp.array([observation]),
+                jnp.array([action]),
+                jnp.array([reward]),
+                jnp.array([done]),
+                jnp.array([next_obs]),
+            )
             replay_buffer.push(env_output)
             if not done:
-              observation = next_obs
+                observation = next_obs
             else:
-              observation = env.reset()
+                observation = env.reset()
 
         total_env_steps += n_samples
 
         batch_sampler = replay_buffer.sample(batch_size)
+        m = []
         for _ in tqdm(range(steps_per_epoch)):
             rng, key1, key2, batch_rng = random.split(rng, num=4)
             batch = batch_sampler(batch_rng)
@@ -237,13 +275,16 @@ def train(env):
                 q_t_2_state,
                 policy_state,
             )
-        print(metrics)
+            m.append(metrics)
+        print(dict_average(m))
 
         # eval
         def gather_eval_trajectory():
             @jax.jit
             def action(obs):
-                return select_mean_action(policy_network, policy_state.params, obs)
+                return select_mean_action(
+                    policy_network, policy_state.params, obs, act_limit
+                )
 
             eval_done = False
             eval_obs = env.reset()
@@ -256,7 +297,7 @@ def train(env):
             return total_episode_rewards
 
         average_rewards = 0
-        for i in tqdm(range(20)):
+        for _ in tqdm(range(20)):
             average_rewards += gather_eval_trajectory()
         average_rewards /= 20
 
@@ -287,5 +328,9 @@ def train(env):
 
 
 if __name__ == "__main__":
+    # follows https://github.com/openai/gym/issues/681
     env = gym.make("Pendulum-v1")
+    env.seed(0)
+    np.random.seed(0)
+    env.action_space.np_random.seed(0)
     all_average_rewards = train(env)

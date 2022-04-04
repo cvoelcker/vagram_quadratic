@@ -38,11 +38,13 @@ class ReplayBuffer(object):
         self._dones = jnp.concatenate(self.dones)
         self._compiled = True
         self.counter = len(self._obs)
+        print(self.counter)
 
     def sample(self, batch_size):
         if not self._compiled:
             self._compile()
 
+        @jax.jit
         def sampler(key):
             perms = random.randint(
                 key, shape=(batch_size,), minval=0, maxval=self.counter
