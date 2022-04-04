@@ -1,1 +1,1 @@
-# vagram_quadratic
+# Higher-order Taylor approximations for Value-gradient Aware Model Learning

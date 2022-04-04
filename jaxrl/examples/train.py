@@ -1,6 +1,8 @@
 import os
 import random
 
+import jax
+
 import numpy as np
 import tqdm
 from absl import app, flags
@@ -11,6 +13,14 @@ from jaxrl.agents import SACLearner
 from jaxrl.datasets import ReplayBuffer
 from jaxrl.evaluation import evaluate
 from jaxrl.utils import make_env
+from env_model.loss_functions import (
+    make_loss,
+    quadratic_vagram_loss,
+    mse_loss,
+    vagram_loss,
+)
+from env_model.model_train import train_model
+from env_model.nn_modules import init_model
 
 FLAGS = flags.FLAGS
 
@@ -37,6 +47,8 @@ config_flags.DEFINE_config_file(
 
 
 def main(_):
+    key = jax.random.PRNGKey(FLAGS.seed)
+
     summary_writer = SummaryWriter(os.path.join(FLAGS.save_dir, "tb", str(FLAGS.seed)))
 
     if FLAGS.save_video:
@@ -45,6 +57,15 @@ def main(_):
     else:
         video_train_folder = None
         video_eval_folder = None
+
+    if FLAGS.model_loss_fn == "mse":
+        loss_fn = mse_loss
+    elif FLAGS.model_loss_fn == "vagram":
+        loss_fn = vagram_loss
+    elif FLAGS.model_loss_fn == "vagram_quadratic":
+        loss_fn = quadratic_vagram_loss
+    else:
+        raise ValueError(f"Unknown loss function: {FLAGS.model_loss_fn}")
 
     env = make_env(FLAGS.env_name, FLAGS.seed, video_train_folder)
     eval_env = make_env(FLAGS.env_name, FLAGS.seed + 42, video_eval_folder)
@@ -60,6 +81,14 @@ def main(_):
         env.observation_space.sample()[np.newaxis],
         env.action_space.sample()[np.newaxis],
         **kwargs,
+    )
+    key, init_key = jax.random.split(key)
+    model_state = init_model(
+        env.observation_space,
+        env.action_space,
+        FLAGS.model_hidden_size,
+        FLAGS.model_lr,
+        init_key,
     )
 
     replay_buffer = ReplayBuffer(
@@ -85,6 +114,7 @@ def main(_):
         replay_buffer.insert(
             observation, action, reward, mask, float(done), next_observation
         )
+
         observation = next_observation
 
         if done:
@@ -100,8 +130,46 @@ def main(_):
                 )
 
         if i >= FLAGS.start_training:
+            if i % FLAGS.model_update_interval == 0 or i == FLAGS.start_training:
+                loss_function = make_loss(loss_fn, agent.compile_state_value_function())
+                model_replay_buffer = ReplayBuffer(
+                    env.observation_space,
+                    env.action_space,
+                    FLAGS.model_steps,
+                )
+                key, model_train_key = jax.random.split(key, 2)
+                model_state, metrics = train_model(
+                    model_state,
+                    replay_buffer,
+                    loss_function,
+                    FLAGS.model_batch_size,
+                    model_train_key,
+                )
+
+                batch = replay_buffer.sample(FLAGS.num_model_samples)
+                actions = agent.sample_actions(batch["observations"])
+                next_states, rewards = model_state.apply_fn(
+                    {"params": model_state.params},
+                    jax.numpy.concatenate([batch["observations"], actions], axis=1),
+                )
+                ensemble_indices = np.random.choice(
+                    8, size=(FLAGS.num_model_samples)
+                ).reshape(1, -1, 1)
+                next_states = jax.numpy.take_along_axis(next_states, ensemble_indices)
+
+                for observation, action, reward, next_observation in zip(
+                    batch["observations"], actions, rewards, next_states
+                ):
+                    # TODO: Check that mask and done is set correctly
+                    model_replay_buffer.insert(
+                        observation, action, reward, 0.0, 0.0, next_observation
+                    )
+
             for _ in range(FLAGS.updates_per_step):
-                batch = replay_buffer.sample(FLAGS.batch_size)
+                buffer = np.random.choice(
+                    [model_replay_buffer, replay_buffer], p=[0.95, 0.05]
+                )
+                batch = buffer.sample(FLAGS.batch_size)
                 update_info = agent.update(batch)
 
             if i % FLAGS.log_interval == 0:

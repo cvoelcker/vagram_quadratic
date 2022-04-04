@@ -1,4 +1,3 @@
-import jax
 from flax import linen as nn
 from jax.nn import initializers as init
 
