@@ -32,7 +32,9 @@ def train_model(model_state, replay_buffer, loss_function, batch_size, rng, pati
             # get batch from permutations
             states = train.observations[perm]
             actions = train.actions[perm]
-            rewards = train.rewards[perm]
+            if len(actions.shape) == 1:
+                actions = actions.reshape(-1, 1)
+            rewards = train.rewards[perm].reshape(-1, 1)
             next_states = train.next_observations[perm]
 
             rng, step_key = random.split(rng)
