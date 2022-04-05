@@ -54,7 +54,7 @@ def train_model(model_state, replay_buffer, loss_function, batch_size, rng, pati
             loss_value, model_state = f(
                 states, actions, rewards, next_states, model_state, step_key
             )
-            print(loss_value)
+            # print(loss_value)
             loss_values.append(loss_value)
         return model_state, loss_values
 
@@ -71,7 +71,7 @@ def train_model(model_state, replay_buffer, loss_function, batch_size, rng, pati
             batch.next_observations,
             validation_key,
         )
-        print(loss)
+        # print(loss)
         return loss > best_loss
 
     converged = False

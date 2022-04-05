@@ -22,7 +22,7 @@ InfoDict = Dict[str, float]
 
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.elu
     activate_final: int = False
     dropout_rate: Optional[float] = None
 
