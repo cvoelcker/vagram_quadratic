@@ -10,7 +10,7 @@ from ml_collections import config_flags
 from tensorboardX import SummaryWriter
 
 from jaxrl.agents import SACLearner
-from jaxrl.datasets import ReplayBuffer
+from jaxrl.datasets.replay_buffer import ReplayBuffer
 from jaxrl.evaluation import evaluate
 from jaxrl.utils import make_env
 from env_model.loss_functions import (
@@ -24,18 +24,26 @@ from env_model.nn_modules import init_model
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string("env_name", "HalfCheetah-v2", "Environment name.")
+flags.DEFINE_string("env_name", "Pendulum-v1", "Environment name.")
 flags.DEFINE_string("save_dir", "./tmp/", "Tensorboard logging dir.")
+flags.DEFINE_string("model_loss_fn", "mse", "Loss function to update model")
 flags.DEFINE_integer("seed", 42, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 10, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("eval_interval", 5000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
-flags.DEFINE_integer("updates_per_step", 1, "Gradient updates per step.")
+flags.DEFINE_integer("updates_per_step", 20, "Gradient updates per step.")
+flags.DEFINE_integer(
+    "model_update_interval", 250, "Number of training steps until model is updated"
+)
+flags.DEFINE_integer("model_hidden_size", 128, "Gradient updates per step.")
+flags.DEFINE_integer("model_steps", 5000, "Gradient updates per step.")
+flags.DEFINE_integer("model_batch_size", 128, "Gradient updates per step.")
 flags.DEFINE_integer("max_steps", int(1e6), "Number of training steps.")
 flags.DEFINE_integer(
     "start_training", int(1e4), "Number of training steps to start training."
 )
+flags.DEFINE_float("model_lr", 1e-3, "Learning rate for the model.")
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
 flags.DEFINE_boolean("save_video", False, "Save videos during evaluation.")
 config_flags.DEFINE_config_file(
@@ -83,7 +91,7 @@ def main(_):
         **kwargs,
     )
     key, init_key = jax.random.split(key)
-    model_state = init_model(
+    model_state, model_network = init_model(
         env.observation_space,
         env.action_space,
         FLAGS.model_hidden_size,
@@ -131,7 +139,13 @@ def main(_):
 
         if i >= FLAGS.start_training:
             if i % FLAGS.model_update_interval == 0 or i == FLAGS.start_training:
-                loss_function = make_loss(loss_fn, agent.compile_state_value_function())
+
+                def vf(x):
+                    return np.prod(np.sin(x))
+
+                loss_function = make_loss(
+                    loss_fn, model_network, agent.compile_state_value_function()
+                )
                 model_replay_buffer = ReplayBuffer(
                     env.observation_space,
                     env.action_space,
@@ -147,10 +161,10 @@ def main(_):
                 )
 
                 batch = replay_buffer.sample(FLAGS.num_model_samples)
-                actions = agent.sample_actions(batch["observations"])
+                actions = agent.sample_actions(batch.observations)
                 next_states, rewards = model_state.apply_fn(
                     {"params": model_state.params},
-                    jax.numpy.concatenate([batch["observations"], actions], axis=1),
+                    jax.numpy.concatenate([batch.observations, actions], axis=1),
                 )
                 ensemble_indices = np.random.choice(
                     8, size=(FLAGS.num_model_samples)

@@ -15,7 +15,7 @@ class ModelNetwork(nn.Module):
     @nn.compact
     def __call__(self, x):
         results = []
-        for _ in range(self.ensemble_members):
+        for _ in range(1):
             _x = nn.Dense(self.hidden_size, kernel_init=init.kaiming_normal())(x)
             _x = nn.leaky_relu(_x)
             _x = nn.Dense(self.hidden_size, kernel_init=init.kaiming_normal())(_x)
@@ -40,10 +40,12 @@ def init_model(obs_space, action_space, hidden_size, lr, init_key):
         ensemble_members=8,
     )
     key1, key2 = random.split(model_key)
-    x = random.normal(key1, (obs_space.shape[0],))  # Dummy input
+    x = random.normal(
+        key1, (obs_space.shape[0] + action_space.shape[0],)
+    )  # Dummy input
     params = model.init(key2, x)["params"]  # Initialization call
     tx = optax.rmsprop(lr)
     optim_state = train_state.TrainState.create(
         apply_fn=model.apply, params=params, tx=tx
     )
-    return optim_state
+    return optim_state, model
