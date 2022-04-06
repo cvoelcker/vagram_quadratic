@@ -30,7 +30,7 @@ flags.DEFINE_string("model_loss_fn", "mse", "Loss function to update model")
 flags.DEFINE_integer("seed", 42, "Random seed.")
 flags.DEFINE_integer("eval_episodes", 10, "Number of episodes used for evaluation.")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
-flags.DEFINE_integer("eval_interval", 5000, "Eval interval.")
+flags.DEFINE_integer("eval_interval", 1000, "Eval interval.")
 flags.DEFINE_integer("batch_size", 256, "Mini batch size.")
 flags.DEFINE_integer("updates_per_step", 20, "Gradient updates per step.")
 flags.DEFINE_integer(
@@ -176,9 +176,7 @@ def main(_):
                     next_states, ensemble_indices, axis=0
                 )[0]
 
-                for observation, action, reward, next_observation in tqdm.tqdm(
-                    list(zip(batch.observations, actions, rewards, next_states))
-                ):
+                for observation, action, reward, next_observation in zip(batch.observations, actions, rewards, next_states):
                     # TODO: Check that mask and done is set correctly
                     model_replay_buffer.insert(
                         observation, action, reward, 0.0, 0.0, next_observation
