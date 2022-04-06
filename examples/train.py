@@ -40,6 +40,7 @@ flags.DEFINE_integer("model_hidden_size", 128, "Gradient updates per step.")
 flags.DEFINE_integer("model_steps", 5000, "Gradient updates per step.")
 flags.DEFINE_integer("model_batch_size", 128, "Gradient updates per step.")
 flags.DEFINE_integer("max_steps", int(1e6), "Number of training steps.")
+flags.DEFINE_integer("num_model_samples", int(50000), "Number of training steps.")
 flags.DEFINE_integer(
     "start_training", int(1e4), "Number of training steps to start training."
 )
@@ -144,7 +145,9 @@ def main(_):
                     return np.prod(np.sin(x))
 
                 loss_function = make_loss(
-                    loss_fn, model_network, agent.compile_state_value_function()
+                    loss_fn,
+                    model_network,
+                    agent.compile_state_value_function(),
                 )
                 model_replay_buffer = ReplayBuffer(
                     env.observation_space,
@@ -169,10 +172,12 @@ def main(_):
                 ensemble_indices = np.random.choice(
                     8, size=(FLAGS.num_model_samples)
                 ).reshape(1, -1, 1)
-                next_states = jax.numpy.take_along_axis(next_states, ensemble_indices)
+                next_states = jax.numpy.take_along_axis(
+                    next_states, ensemble_indices, axis=0
+                )[0]
 
-                for observation, action, reward, next_observation in zip(
-                    batch["observations"], actions, rewards, next_states
+                for observation, action, reward, next_observation in tqdm.tqdm(
+                    list(zip(batch.observations, actions, rewards, next_states))
                 ):
                     # TODO: Check that mask and done is set correctly
                     model_replay_buffer.insert(

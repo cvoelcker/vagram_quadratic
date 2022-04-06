@@ -84,18 +84,15 @@ def make_loss(loss_fn, network, value_function):
 
     hess = jax.jit(hessian(value_function))
 
-    def loss(params, states, actions, rewards, next_states, key):
-        def v_loss_fn(pred, next_state, value_function, key):
+    def loss(params, inp, rewards, next_states, key):
+        def v_loss_fn(pred, next_state, key):
             return jax.vmap(loss_fn, in_axes=[0, 0, None, None, None])(
                 pred, next_state, value_function, hess, key
             )
 
-        inp = jnp.concatenate([states, actions], axis=1)
         pred, pred_reward = network.apply({"params": params}, inp)
-        losses = jax.vmap(v_loss_fn, in_axes=[0, None, None, None])(
-            pred, next_states, value_function, key
-        )
+        losses = jax.vmap(v_loss_fn, in_axes=[0, None, None])(pred, next_states, key)
         reward_losses = mse_loss(pred_reward, rewards, value_function, None, None)
-        return jnp.mean(losses) + reward_losses
+        return jnp.mean(losses) + jnp.mean(reward_losses)
 
-    return jax.jit(loss)
+    return loss

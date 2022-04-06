@@ -15,7 +15,7 @@ class ModelNetwork(nn.Module):
     @nn.compact
     def __call__(self, x):
         results = []
-        for _ in range(1):
+        for _ in range(self.ensemble_members):
             _x = nn.Dense(self.hidden_size, kernel_init=init.kaiming_normal())(x)
             _x = nn.leaky_relu(_x)
             _x = nn.Dense(self.hidden_size, kernel_init=init.kaiming_normal())(_x)
