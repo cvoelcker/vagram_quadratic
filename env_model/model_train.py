@@ -55,7 +55,7 @@ def train_model(model_state, replay_buffer, loss_function, batch_size, rng, pati
         return model_state, jnp.array(np.array(loss_values))
 
     def validate(batch, model_state, loss_function, best_loss, validation_key):
-        if len(batch.actions.shape):
+        if len(batch.actions.shape) == 1:
             actions = batch.actions.reshape(-1, 1)
         else:
             actions = batch.actions

@@ -11,6 +11,7 @@ from tensorboardX import SummaryWriter
 
 from jaxrl.agents import SACLearner
 from jaxrl.datasets.replay_buffer import ReplayBuffer
+from jaxrl.datasets.dataset import Batch
 from jaxrl.evaluation import evaluate
 from jaxrl.utils import make_env
 from env_model.loss_functions import (
@@ -43,7 +44,7 @@ flags.DEFINE_integer("model_batch_size", 128, "Gradient updates per step.")
 flags.DEFINE_integer("max_steps", int(1e6), "Number of training steps.")
 flags.DEFINE_integer("num_model_samples", int(50000), "Number of training steps.")
 flags.DEFINE_integer(
-    "start_training", int(1e4), "Number of training steps to start training."
+    "start_training", int(4e3), "Number of training steps to start training."
 )
 flags.DEFINE_float("model_lr", 1e-3, "Learning rate for the model.")
 flags.DEFINE_boolean("tqdm", True, "Use tqdm progress bar.")
@@ -57,6 +58,10 @@ config_flags.DEFINE_config_file(
 
 
 def main(_):
+    from jax.lib import xla_bridge
+
+    print(xla_bridge.get_backend().platform)
+
     key = jax.random.PRNGKey(FLAGS.seed)
 
     summary_writer = SummaryWriter(os.path.join(FLAGS.save_dir, "tb", str(FLAGS.seed)))
@@ -155,7 +160,7 @@ def main(_):
                 model_replay_buffer = ReplayBuffer(
                     env.observation_space,
                     env.action_space,
-                    FLAGS.model_steps,
+                    FLAGS.num_model_samples,
                 )
                 key, model_train_key = jax.random.split(key, 2)
                 model_state, metrics = train_model(
@@ -165,35 +170,51 @@ def main(_):
                     FLAGS.model_batch_size,
                     model_train_key,
                 )
-
-                batch = replay_buffer.sample(FLAGS.num_model_samples)
-                actions = agent.sample_actions(batch.observations)
-                next_states, rewards = model_state.apply_fn(
+                model_fn = lambda s, a: model_state.apply_fn(
                     {"params": model_state.params},
-                    jax.numpy.concatenate([batch.observations, actions], axis=1),
+                    jax.numpy.concatenate([s, a], axis=1),
                 )
-                ensemble_indices = np.random.choice(
-                    8, size=(FLAGS.num_model_samples)
-                ).reshape(1, -1, 1)
-                next_states = jax.numpy.take_along_axis(
-                    next_states, ensemble_indices, axis=0
-                )[0]
 
-                for observation, action, reward, next_observation in zip(
-                    batch.observations, actions, rewards, next_states
-                ):
-                    # TODO: Check that mask and done is set correctly
-                    model_replay_buffer.insert(
-                        observation, action, reward, 1.0, 0.0, next_observation
-                    )
+                # batch = replay_buffer.sample(FLAGS.num_model_samples)
+                # actions = agent.sample_actions(batch.observations)
+                # next_states, rewards = model_state.apply_fn(
+                #     {"params": model_state.params},
+                #     jax.numpy.concatenate([batch.observations, actions], axis=1),
+                # )
+                # ensemble_indices = np.random.choice(
+                #     8, size=(FLAGS.num_model_samples)
+                # ).reshape(1, -1, 1)
+                # next_states = jax.numpy.take_along_axis(
+                #     next_states, ensemble_indices, axis=0
+                # )[0]
+
+                # for observation, action, reward, next_observation in zip(
+                #     batch.observations, actions, rewards, next_states
+                # ):
+                #     # TODO: Check that mask and done is set correctly
+                #     model_replay_buffer.insert(
+                #         observation, action, reward, 1.0, 0.0, next_observation
+                #     )
 
             for _ in range(FLAGS.updates_per_step):
                 buffer_name = np.random.choice(["model", "env"], p=[0.95, 0.05])
+                batch = replay_buffer.sample(FLAGS.batch_size)
                 if buffer_name == "model":
-                    buffer = model_replay_buffer
-                else:
-                    buffer = replay_buffer
-                batch = buffer.sample(FLAGS.batch_size)
+                    actions = agent.sample_actions(batch.observations)
+                    next_states, rewards = jax.jit(model_fn)(batch.observations, actions)
+                    ensemble_indices = np.random.choice(
+                        8, size=(FLAGS.batch_size)
+                    ).reshape(1, -1, 1)
+                    next_states = jax.numpy.take_along_axis(
+                        next_states, ensemble_indices, axis=0
+                    )[0]
+                    batch = Batch(
+                        observations=batch.observations,
+                        actions=actions,
+                        rewards=rewards,
+                        masks=batch.masks,
+                        next_observations=next_states,
+                    )
                 update_info = agent.update(batch)
 
             if i % FLAGS.log_interval == 0:
@@ -212,7 +233,7 @@ def main(_):
 
             eval_returns.append((info["total"]["timesteps"], eval_stats["return"]))
             np.savetxt(
-                os.path.join(FLAGS.save_dir, f"{FLAGS.seed}.txt"),
+                os.path.join(FLAGS.save_dir, f"{FLAGS.model_loss_fn}_{FLAGS.seed}.txt"),
                 eval_returns,
                 fmt=["%d", "%.1f"],
             )
