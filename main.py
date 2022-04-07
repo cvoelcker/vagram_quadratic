@@ -69,7 +69,6 @@ def quadratic_vagram_broken_loss(model_prediction, environment_sample, value_fun
     """Compute the quadratic upper bounded 2nd order VAGRAM loss using the Hessian for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = model_prediction - environment_sample
     hes = hessian(value_function)(environment_sample)
-    print(hes)
     return np.square(err.T.dot(hes.dot(err)))
 
 
@@ -79,7 +78,6 @@ def quadratic_vagram_loss(model_prediction, environment_sample, value_function):
     hes = hessian(value_function)(environment_sample)
     l, Q = np.linalg.eigh(hes)
     basis_trans = np.dot(np.transpose(Q), err)
-    print(l)
     return np.square(l * basis_trans).sum()
 
 
@@ -223,7 +221,7 @@ def train(
 def run_vagram(run_name):
     run_name = run_name + "_vagram_quadratic_combined"
     env = environment.make_pendulum()
-    obs, act = environment.get_samples(env, n=10000)
+    obs, act, _, _, _ = environment.get_samples(env, n=10000)
 
     train_ratio = 0.9
 
@@ -273,7 +271,7 @@ def run_vagram(run_name):
 def run_combined_vagram(run_name):
     run_name = run_name + "_vagram_quadratic_combined"
     env = environment.make_pendulum()
-    obs, act = environment.get_samples(env, n=10000)
+    obs, act, _, _, _ = environment.get_samples(env, n=10000)
 
     train_ratio = 0.9
 
@@ -324,7 +322,7 @@ def run_combined_vagram(run_name):
 def run_mse(run_name):
     run_name = run_name + "_mse"
     env = environment.make_pendulum()
-    obs, act = environment.get_samples(env, n=10000)
+    obs, act, _, _, _ = environment.get_samples(env, n=10000)
 
     train_ratio = 0.9
 
