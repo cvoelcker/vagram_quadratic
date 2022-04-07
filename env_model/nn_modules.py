@@ -20,9 +20,9 @@ class ModelNetwork(nn.Module):
             _x = nn.leaky_relu(_x)
             _x = nn.Dense(self.hidden_size, kernel_init=init.kaiming_normal())(_x)
             _x = nn.leaky_relu(_x)
-            results.append(
-                nn.Dense(self.state_dim, kernel_init=init.kaiming_normal())(_x)
-            )
+            _x = nn.Dense(self.state_dim, kernel_init=init.kaiming_normal())(_x)
+            _x = _x + x[..., : self.state_dim]
+            results.append(_x)
         _x = nn.Dense(self.hidden_size, kernel_init=init.kaiming_normal())(x)
         _x = nn.leaky_relu(_x)
         _x = nn.Dense(self.hidden_size, kernel_init=init.kaiming_normal())(_x)

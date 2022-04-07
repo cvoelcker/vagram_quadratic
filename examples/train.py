@@ -176,16 +176,20 @@ def main(_):
                     next_states, ensemble_indices, axis=0
                 )[0]
 
-                for observation, action, reward, next_observation in zip(batch.observations, actions, rewards, next_states):
+                for observation, action, reward, next_observation in zip(
+                    batch.observations, actions, rewards, next_states
+                ):
                     # TODO: Check that mask and done is set correctly
                     model_replay_buffer.insert(
-                        observation, action, reward, 0.0, 0.0, next_observation
+                        observation, action, reward, 1.0, 0.0, next_observation
                     )
 
             for _ in range(FLAGS.updates_per_step):
-                buffer = np.random.choice(
-                    [model_replay_buffer, replay_buffer], p=[0.95, 0.05]
-                )
+                buffer_name = np.random.choice(["model", "env"], p=[0.95, 0.05])
+                if buffer_name == "model":
+                    buffer = model_replay_buffer
+                else:
+                    buffer = replay_buffer
                 batch = buffer.sample(FLAGS.batch_size)
                 update_info = agent.update(batch)
 
