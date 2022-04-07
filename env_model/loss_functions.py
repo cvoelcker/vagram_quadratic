@@ -63,6 +63,14 @@ def quadratic_vagram_loss_quartic(
     return jnp.square(l * jnp.square(basis_trans)).sum()
 
 
+def vagram_joint_loss(model_prediction, environment_sample, value_function, hess, key):
+    return 2 * vagram_loss(
+        model_prediction, environment_sample, value_function, hess, key
+    ) + 0.5 * quadratic_vagram_loss(
+        model_prediction, environment_sample, value_function, hess, key
+    )
+
+
 def eval_loss_vaml(model_prediction, environment_sample, value_function, key):
     """Compute the VAML loss for validation for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = value_function(environment_sample, key) - value_function(

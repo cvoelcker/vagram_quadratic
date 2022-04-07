@@ -17,6 +17,7 @@ from env_model.loss_functions import (
     make_loss,
     quadratic_vagram_loss,
     mse_loss,
+    vagram_joint_loss,
     vagram_loss,
 )
 from env_model.model_train import train_model
@@ -73,6 +74,8 @@ def main(_):
         loss_fn = vagram_loss
     elif FLAGS.model_loss_fn == "vagram_quadratic":
         loss_fn = quadratic_vagram_loss
+    elif FLAGS.model_loss_fn == "vagram_full":
+        loss_fn = vagram_joint_loss
     else:
         raise ValueError(f"Unknown loss function: {FLAGS.model_loss_fn}")
 
