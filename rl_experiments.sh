@@ -22,23 +22,23 @@
 
 
 # Ant comparison
-sbatch run_ant.sh vagram_full 0
-sbatch run_ant.sh vagram_full 1
-sbatch run_ant.sh vagram_full 2
-sbatch run_ant.sh vagram_full 3
-sbatch run_ant.sh vagram_full 4
-sbatch run_ant.sh vagram_full 5
+sbatch run_hopper.sh vagram_full 0
+sbatch run_hopper.sh vagram_full 1
+sbatch run_hopper.sh vagram_full 2
+sbatch run_hopper.sh vagram_full 3
+sbatch run_hopper.sh vagram_full 4
+sbatch run_hopper.sh vagram_full 5
 
-sbatch run_ant.sh vagram 0
-sbatch run_ant.sh vagram 1
-sbatch run_ant.sh vagram 2
-# sbatch run_ant.sh vagram 3
-# sbatch run_ant.sh vagram 4
-# sbatch run_ant.sh vagram 5
+sbatch run_hopper.sh vagram 0
+sbatch run_hopper.sh vagram 1
+sbatch run_hopper.sh vagram 2
+# sbatch run_hopper.sh vagram 3
+# sbatch run_hopper.sh vagram 4
+# sbatch run_hopper.sh vagram 5
 # 
-# sbatch run_ant.sh mse 0
-# sbatch run_ant.sh mse 1
-# sbatch run_ant.sh mse 2
-# sbatch run_ant.sh mse 3
-# sbatch run_ant.sh mse 4
-# sbatch run_ant.sh mse 5
+# sbatch run_hopper.sh mse 0
+# sbatch run_hopper.sh mse 1
+# sbatch run_hopper.sh mse 2
+# sbatch run_hopper.sh mse 3
+# sbatch run_hopper.sh mse 4
+# sbatch run_hopper.sh mse 5
