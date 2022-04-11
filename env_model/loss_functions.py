@@ -71,6 +71,13 @@ def vagram_joint_loss(model_prediction, environment_sample, value_function, hess
     )
 
 
+def vagram_no_bounds(model_prediction, environment_sample, value_function, hess, key):
+    err = model_prediction - environment_sample
+    _, grad = jax.value_and_grad(value_function)(environment_sample, key)
+    hes = hess(environment_sample, key)
+    return jnp.square(grad.dot(err) + err.T.dot(hes.dot(err)))
+
+
 def eval_loss_vaml(model_prediction, environment_sample, value_function, key):
     """Compute the VAML loss for validation for a given model prediction and environment sample. (VMAPed over batch for prediction and target)"""
     err = value_function(environment_sample, key) - value_function(
