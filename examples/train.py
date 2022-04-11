@@ -59,10 +59,6 @@ config_flags.DEFINE_config_file(
 
 
 def main(_):
-    from jax.lib import xla_bridge
-
-    print(xla_bridge.get_backend().platform)
-
     key = jax.random.PRNGKey(FLAGS.seed)
 
     summary_writer = SummaryWriter(os.path.join(FLAGS.save_dir, "tb", str(FLAGS.seed)))
@@ -204,7 +200,9 @@ def main(_):
                 batch = replay_buffer.sample(FLAGS.batch_size)
                 if buffer_name == "model":
                     actions = agent.sample_actions(batch.observations)
-                    next_states, rewards = jax.jit(model_fn)(batch.observations, actions)
+                    next_states, rewards = jax.jit(model_fn)(
+                        batch.observations, actions
+                    )
                     ensemble_indices = np.random.choice(
                         8, size=(FLAGS.batch_size)
                     ).reshape(1, -1, 1)
