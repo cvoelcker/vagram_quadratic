@@ -7,6 +7,7 @@ from main import (
     quadratic_vagram_loss,
     vagram_broken_loss,
     vagram_loss,
+    vagram_no_bounds_loss,
 )
 import numpy as np
 
@@ -16,14 +17,8 @@ import matplotlib as mpl
 sns.set()
 mpl.rcParams["xtick.labelsize"] = 30
 mpl.rcParams["ytick.labelsize"] = 30
-mpl.rcParams["axes.titlesize"] = 50
-mpl.rcParams["axes.labelsize"] = 50
-mpl.rcParams["figure.titlesize"] = 0
+mpl.rcParams["axes.titlesize"] = 40
 mpl.rcParams["font.family"] = "serif"
-mpl.rcParams["text.usetex"] = True
-mpl.rcParams["font.family"] = "Helvetics"
-mpl.rcParams["axes.grid"] = True
-mpl.rcParams["axes.linewidth"] = 30
 
 import matplotlib.pyplot as plt
 
@@ -81,7 +76,7 @@ if __name__ == "__main__":
         [-2, 2],
         100,
     )
-    axs[0, 2].set_title("VAGRAM broken")
+    axs[0, 2].set_title("VAGRAM unbounded")
     plot_2d_loss(
         axs[0, 3],
         lambda x, y: vagram_loss(x, y, value_function),
@@ -99,7 +94,7 @@ if __name__ == "__main__":
         [-2, 2],
         100,
     )
-    axs[1, 0].set_title("Quadratic VAGRAM broken")
+    axs[1, 0].set_title("Quadratic VAGRAM unbounded")
     plot_2d_loss(
         axs[1, 1],
         lambda x, y: quadratic_vagram_loss(x, y, value_function),
@@ -111,14 +106,13 @@ if __name__ == "__main__":
     axs[1, 1].set_title("Quadratic VAGRAM")
     plot_2d_loss(
         axs[1, 2],
-        lambda x, y: 2 * vagram_broken_loss(x, y, value_function)
-        + 0.5 * quadratic_vagram_broken_loss(x, y, value_function),
+        lambda x, y: vagram_no_bounds_loss(x, y, value_function),
         target,
         [-2, 2],
         [-2, 2],
         100,
     )
-    axs[1, 2].set_title("VAGRAM + Quadratic VAGRAM broken")
+    axs[1, 2].set_title("VAGRAM + Quadratic VAGRAM unbounded")
     plot_2d_loss(
         axs[1, 3],
         lambda x, y: 2 * vagram_loss(x, y, value_function)

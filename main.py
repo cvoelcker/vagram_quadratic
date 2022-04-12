@@ -1,3 +1,4 @@
+from os import environ
 from typing import Callable, Tuple
 
 from tqdm import tqdm
@@ -88,6 +89,13 @@ def quadratic_vagram_loss_quartic(model_prediction, environment_sample, value_fu
     l, Q = np.linalg.eigh(hes)
     basis_trans = np.dot(np.transpose(Q), err)
     return np.square(l * np.square(basis_trans)).sum()
+
+
+def vagram_no_bounds_loss(model_prediction, environment_sample, value_function):
+    err = model_prediction - environment_sample
+    hes = hessian(value_function)(environment_sample)
+    _, grad = jax.value_and_grad(value_function)(environment_sample)
+    return np.square(grad.dot(err) + err.T.dot(hes.dot(err)))
 
 
 def eval_loss_vaml(model_prediction, environment_sample, value_function):
